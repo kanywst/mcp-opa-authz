@@ -6,7 +6,7 @@
 # builder stage. Building this file directly compiles from source, so that
 # `docker build .` on a checkout produces the same server.
 
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 
 # Dependencies are their own layer: source changes far more often than go.sum.
