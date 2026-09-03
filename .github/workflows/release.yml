@@ -51,6 +51,10 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A separate fine-grained PAT, because GITHUB_TOKEN is scoped to this
+          # repository and the formula has to be committed to kanywst/homebrew-tap.
+          # Scope it to `contents: write` on that tap and nothing else.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
 
   # Called rather than triggered. `release: published` looks like the natural
   # trigger and never fires: goreleaser creates the release with GITHUB_TOKEN,

@@ -56,6 +56,37 @@ dockers_v2:
 release:
   prerelease: auto
 
+# Formula rather than Cask. The tap's readme is explicit that the split is not
+# a CLI/GUI distinction but simply which GoReleaser block wrote the file, and a
+# Cask would be the wrong one here for a concrete reason: Homebrew supports
+# casks on macOS only, so the linux/amd64 and linux/arm64 archives this build
+# already produces would have no way to be installed. `brews:` writes a Formula,
+# which works on both.
+#
+# GoReleaser marks `brews:` deprecated in favour of `homebrew_casks:`. That is
+# bounded rather than urgent — deprecated options are removed "only on major
+# versions" — and `spiffe-compliance-checker` uses the same block in the same
+# tap for the same reason. Revisit if the two ever need to diverge.
+brews:
+  - name: mcp-opa-authz
+    repository:
+      owner: kanywst
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/kanywst/mcp-opa-authz
+    description: "MCP server giving LLM agents real authorization answers: evaluate Rego in-process via OPA, or ask an OpenID AuthZEN 1.0 PDP"
+    license: MIT
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "chore(mcp-opa-authz): bump to {{ .Tag }}"
+    directory: Formula
+    install: |
+      bin.install "mcp-opa-authz"
+    test: |
+      system "#{bin}/mcp-opa-authz", "--version"
+
 sboms:
   - artifacts: archive
 
