@@ -75,7 +75,10 @@ brews:
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: https://github.com/kanywst/mcp-opa-authz
-    description: "MCP server giving LLM agents real authorization answers: evaluate Rego in-process via OPA, or ask an OpenID AuthZEN 1.0 PDP"
+    # Homebrew caps a formula description at 80 characters, which is shorter
+    # than the repository description this was taken from. `brew style` rejects
+    # the formula otherwise, and nothing in the release run would catch it.
+    description: "Answer agent authorization questions with OPA Rego or an AuthZEN PDP"
     license: MIT
     commit_author:
       name: goreleaserbot
