@@ -56,12 +56,15 @@ dockers_v2:
 release:
   prerelease: auto
 
-# Formula rather than Cask. The tap's readme is explicit that the split is not
-# a CLI/GUI distinction but simply which GoReleaser block wrote the file, and a
-# Cask would be the wrong one here for a concrete reason: Homebrew supports
-# casks on macOS only, so the linux/amd64 and linux/arm64 archives this build
-# already produces would have no way to be installed. `brews:` writes a Formula,
-# which works on both.
+# Formula rather than Cask, to match `spiffe-compliance-checker` — the other Go
+# CLI in the tap, built and installed the same way. The tap's readme is explicit
+# that the split is not a CLI/GUI distinction but simply which GoReleaser block
+# wrote the file, so consistency with its sibling is the whole of the argument.
+#
+# It is specifically not that a Cask could not serve linux. Homebrew 6 does
+# install casks on linux — `Cask::Installer#check_stanza_os_requirements` only
+# refuses one that declares `depends_on macos:`, which the tap's `y509` and
+# `brtc` casks do not. Both are installable on either platform.
 #
 # GoReleaser marks `brews:` deprecated in favour of `homebrew_casks:`. That is
 # bounded rather than urgent — deprecated options are removed "only on major
