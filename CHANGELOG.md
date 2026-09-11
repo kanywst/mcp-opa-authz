@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-09-11
+
+Distribution and dependencies. No tool behaviour changed: the four tools, their
+arguments, their output schemas and the sandbox are what v0.2.1 shipped.
+
+### Added
+
+- **A Homebrew formula, `kanywst/tap/mcp-opa-authz`.** `brew install kanywst/tap/mcp-opa-authz` is now an alternative to `go install`, so installing the server no longer requires a Go toolchain. GoReleaser writes `Formula/mcp-opa-authz.rb` into `kanywst/homebrew-tap` as part of the release run, using a fine-grained token scoped to `contents: write` on the tap and nothing else. A Formula rather than a Cask, to match `spiffe-compliance-checker` — the other Go CLI in the tap, built and installed the same way.
+
+### Changed
+
+- `github.com/mark3labs/mcp-go` v0.58.0 → **v1.0.0**. A major version on the dependency, not on its use here: the server registers the same four tools through the same API, and `make check` — including the end-to-end stdio smoke test — passes unchanged.
+- `github.com/open-policy-agent/opa` v1.19.1 → v1.20.2.
+- The build stage of both Dockerfiles moves to `golang:1.27-alpine`. The runtime image is still `gcr.io/distroless/static-debian12:nonroot`.
+
+### Compatibility
+
+- `AUTHZEN_PDP_URL`, `AUTHZEN_PDP_TOKEN`, `MCP_OPA_EVAL_TIMEOUT` and `MCP_OPA_ALLOW_NETWORK_BUILTINS` keep their names and meaning. No configuration change is needed to upgrade from v0.2.x.
+
 ## [v0.2.1] - 2026-08-20
 
 Release plumbing only. The binaries, the container image's behaviour and every
@@ -81,7 +100,8 @@ The first release since the `mcp-opa` / `mcp-authzen` merge. It brings the AuthZ
 
 First release after merging `0-draft/mcp-opa` and `0-draft/mcp-authzen` into one binary. Two tools, `evaluate_policy` and `authzen_evaluate`, over MCP stdio.
 
-[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.3.0...HEAD
+[v0.3.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.2.1...v0.3.0
 [v0.2.1]: https://github.com/kanywst/mcp-opa-authz/compare/v0.2.0...v0.2.1
 [v0.2.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/kanywst/mcp-opa-authz/releases/tag/v0.1.0
