@@ -10,7 +10,10 @@
 Ask a model whether Alice may delete that document and it will produce a confident, plausible, unfalsifiable answer. Give it these tools and the answer comes from the policy.
 
 ```bash
+brew install kanywst/tap/mcp-opa-authz
+# or, without Homebrew:
 go install github.com/kanywst/mcp-opa-authz@latest
+
 claude mcp add opa-authz -- mcp-opa-authz
 ```
 
@@ -227,7 +230,7 @@ scripts/smoke.sh      end-to-end MCP session
 Releases ship a `cosign`-signed checksum file (Sigstore keyless via GitHub OIDC) and a CycloneDX SBOM per archive. The signature and its certificate travel together in one Sigstore bundle, `*-checksums.txt.sigstore.json`.
 
 ```bash
-TAG=v0.1.0
+TAG=v0.3.0
 gh release download "$TAG" -R kanywst/mcp-opa-authz -p '*-checksums.txt*'
 
 cosign verify-blob \
