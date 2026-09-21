@@ -3,7 +3,7 @@ module github.com/kanywst/mcp-opa-authz
 go 1.26.6
 
 require (
-	github.com/mark3labs/mcp-go v1.0.0
+	github.com/mark3labs/mcp-go v1.1.0
 	github.com/open-policy-agent/opa v1.20.2
 )
 
