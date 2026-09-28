@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.3.1] - 2026-09-29
+
+Dependencies only. The four tools, their arguments, their output schemas and
+the sandbox are what v0.3.0 shipped.
+
+### Changed
+
+- `github.com/mark3labs/mcp-go` v1.0.0 → v1.1.1. The stdio transport now cancels in-flight tool calls when the client closes stdin, so a client that hangs up mid-call no longer leaves a PDP request running after the session has ended.
+- `github.com/open-policy-agent/opa` v1.20.2 → v1.21.0.
+
+### Compatibility
+
+- No configuration change is needed to upgrade from v0.3.0.
+
 ## [v0.3.0] - 2026-09-11
 
 Distribution and dependencies. No tool behaviour changed: the four tools, their
@@ -100,7 +114,8 @@ The first release since the `mcp-opa` / `mcp-authzen` merge. It brings the AuthZ
 
 First release after merging `0-draft/mcp-opa` and `0-draft/mcp-authzen` into one binary. Two tools, `evaluate_policy` and `authzen_evaluate`, over MCP stdio.
 
-[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.3.1...HEAD
+[v0.3.1]: https://github.com/kanywst/mcp-opa-authz/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.2.1...v0.3.0
 [v0.2.1]: https://github.com/kanywst/mcp-opa-authz/compare/v0.2.0...v0.2.1
 [v0.2.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.1.0...v0.2.0
