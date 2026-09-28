@@ -114,15 +114,36 @@ allow if {
 }
 EOF
 
-OUT=$(printf '%s\n' \
+# mcp_session <responses> <message>... — run one stdio session and print what
+# the server wrote. stdin is held open until <responses> lines have come back:
+# the server cancels in-flight requests when its input closes, so a bare
+# `printf | "$BIN"` would race every tool call that does I/O against EOF.
+mcp_session() {
+    local want=$1 out
+    shift
+    out=$(mktemp)
+    # shellcheck disable=SC2094 # polling the server's output while it is written is the point
+    {
+        printf '%s\n' "$@"
+        for _ in {1..100}; do
+            (( $(wc -l <"$out") >= want )) && break
+            sleep 0.1
+        done
+    } | "$BIN" >"$out"
+    cat "$out"
+    rm -f "$out"
+}
+
+AUTHZEN_PDP_URL="http://127.0.0.1:${PORT}/access/v1/evaluation"
+export AUTHZEN_PDP_URL
+OUT=$(mcp_session 6 \
     '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
     '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
     '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
     "$(jq -nc --arg r "$REGO" '{jsonrpc:"2.0",id:3,method:"tools/call",params:{name:"evaluate_policy",arguments:{rego:$r,query:"data.smoke.allow",input_json:"{\"user\":\"alice\"}"}}}')" \
     '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"authzen_evaluate","arguments":{"subject":"{\"type\":\"user\",\"id\":\"alice\"}","resource":"{\"type\":\"doc\",\"id\":\"d1\"}","action":"{\"name\":\"read\"}"}}}' \
     '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"authzen_evaluate_batch","arguments":{"subject":"{\"type\":\"user\",\"id\":\"alice\"}","resource":"{\"type\":\"doc\",\"id\":\"d1\"}","evaluations":"[{\"action\":{\"name\":\"read\"}},{\"action\":{\"name\":\"delete\"}}]"}}}' \
-    '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"authzen_discover","arguments":{}}}' \
-    | AUTHZEN_PDP_URL="http://127.0.0.1:${PORT}/access/v1/evaluation" "$BIN")
+    '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"authzen_discover","arguments":{}}}')
 
 # result_of <id> — the tool result payload for a request id, decoded from the
 # text content block. A tool error has no valid JSON there, which fails loudly.
@@ -159,11 +180,10 @@ echo "✓ smoke: evaluate_policy value=true, defined, print() captured"
 
 # The sandbox is the security property this server promises; assert it end to
 # end and not only in the unit tests.
-SANDBOX=$(printf '%s\n' \
+SANDBOX=$(mcp_session 2 \
     '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
     '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
-    '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"evaluate_policy","arguments":{"rego":"package smoke\n\nallow if http.send({\"method\":\"GET\",\"url\":\"http://127.0.0.1/\"}).status_code == 200","query":"data.smoke.allow"}}}' \
-    | "$BIN")
+    '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"evaluate_policy","arguments":{"rego":"package smoke\n\nallow if http.send({\"method\":\"GET\",\"url\":\"http://127.0.0.1/\"}).status_code == 200","query":"data.smoke.allow"}}}')
 if ! printf '%s\n' "$SANDBOX" | jq -e 'select(.id == 2) | .result.isError == true' >/dev/null; then
     echo "✗ smoke: http.send was NOT rejected; the policy sandbox is not in effect"
     printf '%s\n' "$SANDBOX"
