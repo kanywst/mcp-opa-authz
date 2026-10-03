@@ -7,9 +7,10 @@
 # that break when a dependency is upgraded and no Go test notices.
 #
 # It:
-#   1. Starts a fake AuthZEN PDP on a free port that answers both the single
-#      and the batch evaluation endpoints and serves a metadata document.
-#   2. Runs initialize → tools/list → four tools/call over stdio.
+#   1. Starts a fake AuthZEN PDP on a free port that answers the single and
+#      batch evaluation endpoints and the resource search endpoint, and serves
+#      a metadata document.
+#   2. Runs initialize → tools/list → five tools/call over stdio.
 #   3. Asserts every tool answered with the result shape it advertises.
 #
 # Run it before tagging a release, and after upgrading mcp-go or OPA.
@@ -70,6 +71,7 @@ class FakePDP(BaseHTTPRequestHandler):
             "policy_decision_point": ROOT,
             "access_evaluation_endpoint": ROOT + "/access/v1/evaluation",
             "access_evaluations_endpoint": ROOT + "/access/v1/evaluations",
+            "search_resource_endpoint": ROOT + "/access/v1/search/resource",
         })
 
     def do_POST(self):
@@ -85,6 +87,14 @@ class FakePDP(BaseHTTPRequestHandler):
             self._send({"evaluations": out})
         elif self.path == "/access/v1/evaluation":
             self._send({"decision": True, "context": {"reason": "smoke"}})
+        elif self.path == "/access/v1/search/resource":
+            # Echo the searched-for type back, so a request that lost the
+            # resource on the way shows up as a failed assert.
+            rtype = (payload.get("resource") or {}).get("type", "")
+            self._send({
+                "page": {"next_token": ""},
+                "results": [{"type": rtype, "id": "d1"}, {"type": rtype, "id": "d2"}],
+            })
         else:
             self.send_error(404)
 
@@ -136,14 +146,15 @@ mcp_session() {
 
 AUTHZEN_PDP_URL="http://127.0.0.1:${PORT}/access/v1/evaluation"
 export AUTHZEN_PDP_URL
-OUT=$(mcp_session 6 \
+OUT=$(mcp_session 7 \
     '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
     '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
     '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
     "$(jq -nc --arg r "$REGO" '{jsonrpc:"2.0",id:3,method:"tools/call",params:{name:"evaluate_policy",arguments:{rego:$r,query:"data.smoke.allow",input_json:"{\"user\":\"alice\"}"}}}')" \
     '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"authzen_evaluate","arguments":{"subject":"{\"type\":\"user\",\"id\":\"alice\"}","resource":"{\"type\":\"doc\",\"id\":\"d1\"}","action":"{\"name\":\"read\"}"}}}' \
     '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"authzen_evaluate_batch","arguments":{"subject":"{\"type\":\"user\",\"id\":\"alice\"}","resource":"{\"type\":\"doc\",\"id\":\"d1\"}","evaluations":"[{\"action\":{\"name\":\"read\"}},{\"action\":{\"name\":\"delete\"}}]"}}}' \
-    '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"authzen_discover","arguments":{}}}')
+    '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"authzen_discover","arguments":{}}}' \
+    '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"authzen_search","arguments":{"search":"resource","subject":"{\"type\":\"user\",\"id\":\"alice\"}","action":"{\"name\":\"read\"}","resource":"{\"type\":\"doc\"}"}}}')
 
 # result_of <id> — the tool result payload for a request id, decoded from the
 # text content block. A tool error has no valid JSON there, which fails loudly.
@@ -159,10 +170,10 @@ fail() {
 
 # --- tools/list ---
 TOOLS=$(printf '%s\n' "$OUT" | jq -r 'select(.id == 2) | .result.tools[].name' | sort | tr '\n' ' ')
-for want in authzen_discover authzen_evaluate authzen_evaluate_batch evaluate_policy; do
+for want in authzen_discover authzen_evaluate authzen_evaluate_batch authzen_search evaluate_policy; do
     [[ "$TOOLS" == *"$want"* ]] || fail "tools/list is missing $want (got: $TOOLS)"
 done
-echo "✓ smoke: tools/list advertises all four tools"
+echo "✓ smoke: tools/list advertises all five tools"
 
 # --- evaluate_policy ---
 POLICY=$(result_of 3)
@@ -217,5 +228,13 @@ DISCOVER=$(result_of 6)
 ENDPOINT=$(jq -r '.metadata.access_evaluation_endpoint // empty' <<<"$DISCOVER" 2>/dev/null) || fail "authzen_discover returned no decodable result"
 [[ -n "$ENDPOINT" ]] || fail "authzen_discover found no access_evaluation_endpoint" 1
 echo "✓ smoke: authzen_discover resolved $ENDPOINT"
+
+# --- authzen_search ---
+SEARCH=$(result_of 7)
+FOUND=$(jq -r '[.results[] | select(.type == "doc") | .id] | join(",")' <<<"$SEARCH" 2>/dev/null) || fail "authzen_search returned no decodable result"
+MORE=$(jq -r '.has_more' <<<"$SEARCH")
+[[ "$FOUND" == "d1,d2" ]] || fail "authzen_search returned [$FOUND], expected d1,d2" 1
+[[ "$MORE" == "false" ]] || fail "authzen_search reported has_more=$MORE on the last page" 1
+echo "✓ smoke: authzen_search listed 2 permitted resources"
 
 echo "✓ smoke: all checks passed"

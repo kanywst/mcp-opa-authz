@@ -32,6 +32,7 @@ claude mcp add opa-authz \
 | `evaluate_policy` | "What does this Rego say?" Evaluated in-process by [OPA](https://www.openpolicyagent.org/). | Nothing external |
 | `authzen_evaluate` | "What does the PDP that governs this system say?" | A reachable PDP |
 | `authzen_evaluate_batch` | The same, over a list — which of these may the subject touch? | A reachable PDP |
+| `authzen_search` | "Who may…", "which resources may…", "what may…" — the PDP lists what is permitted. | A PDP with the Search APIs |
 | `authzen_discover` | "Which endpoints does this PDP offer?" | A reachable PDP |
 
 Use `evaluate_policy` while authoring or debugging a policy you have the source of. Use `authzen_evaluate` when the decision has to come from production, not from a policy pasted into the chat. The server's MCP instructions tell the model the same thing, so it usually picks correctly on its own.
@@ -44,6 +45,7 @@ An agent given shell access can already run `opa eval`. What it cannot do is get
 - **A PDP that did not answer is not a deny.** AuthZEN makes `decision` a required member. A response missing it decodes into a Go `bool` as `false` — a broken PDP would look like a strict one. This server treats a missing `decision` as a failure, never as a deny. Same for a 401: that means *this server* failed to authenticate, not that the subject was denied, and the error says so.
 - **The policy runs in a sandbox.** Rego handed to an MCP server was written by a model, from text that may have come from a web page. OPA's `http.send` would let that policy make arbitrary HTTP requests from your laptop, and `opa.runtime()` would hand it your environment. Both are compiled out. See [Security](#security).
 - **Batch decisions carry their index.** `permit_on_first_permit` legitimately returns fewer decisions than you sent. Zipping the arrays would attach a decision to the wrong resource.
+- **An empty search is not a failed search.** `results: []` means nothing is permitted; a response with no `results` member, or a result of the wrong entity type, is an error.
 
 ## Demo
 
@@ -120,6 +122,27 @@ Same arguments, plus `evaluations` (a JSON array whose entries override the top-
 }
 ```
 
+### `authzen_search`
+
+The AuthZEN Search APIs. `search` picks which entity is being listed; that entity carries only its `type`.
+
+| `search` | Asks | `subject` | `action` | `resource` |
+| --- | --- | --- | --- | --- |
+| `subject` | Who may do this to that resource? | `type` only | required | `type` and `id` |
+| `resource` | Which resources of a type may the subject act on? | `type` and `id` | required | `type` only |
+| `action` | What may the subject do to the resource? | `type` and `id` | must be omitted | `type` and `id` |
+
+`context`, `pdp_url`, `page_limit` and `page_token` are optional. The endpoint defaults to the specification's path (`/access/v1/search/{subject,resource,action}`) under the root of `AUTHZEN_PDP_URL`. Returns `results`, `has_more` and `next_page_token`; pass the token back as `page_token`, with every other argument unchanged, for the next page. A response whose `page` object has no `next_token` is an error even though the specification's own example has one: without it nothing says whether the list is complete.
+
+```json
+{
+  "search": "resource",
+  "subject": "{\"type\":\"user\",\"id\":\"alice\"}",
+  "action": "{\"name\":\"read\"}",
+  "resource": "{\"type\":\"document\"}"
+}
+```
+
 ### `authzen_discover`
 
 Fetches `/.well-known/authzen-configuration` from a PDP root. `pdp_url` may be a root or an evaluation endpoint — the known AuthZEN path suffix is stripped, and a PDP mounted under a prefix keeps its prefix.
@@ -135,7 +158,7 @@ Implements [Authorization API 1.0](https://openid.net/specs/authorization-api-1_
 | PDP Metadata (`GET /.well-known/authzen-configuration`) | `authzen_discover` |
 | Subject / Action / Resource information model | Required members validated before the request is sent |
 | `X-Request-ID` correlation | Sent on every call, returned in the result |
-| Search APIs (subject / resource / action) | Not implemented — [open an issue](https://github.com/kanywst/mcp-opa-authz/issues) if you need them |
+| Search APIs (subject / resource / action, with pagination) | `authzen_search` |
 
 Related work worth knowing about: the AuthZEN working group's [COAZ profile](https://github.com/openid/authzen/blob/main/profiles/authzen-coaz-mcp-binding-1_0.md) binds AuthZEN to MCP tool calls themselves, so a gateway can authorize `tools/call` with an `x-authzen-mapping` declared in a tool's `inputSchema`. That is the enforcement side of the same problem — this server is the *inspection* side, and the two compose.
 
@@ -177,7 +200,7 @@ Reporting a vulnerability: see [SECURITY.md](./SECURITY.md).
 make smoke
 ```
 
-Builds the binary, stands up a fake AuthZEN PDP, drives one real MCP stdio session through all four tools, and asserts each answered — including that `http.send` is still rejected. No MCP client and no real PDP needed.
+Builds the binary, stands up a fake AuthZEN PDP, drives one real MCP stdio session through all five tools, and asserts each answered — including that `http.send` is still rejected. No MCP client and no real PDP needed.
 
 ### Container
 
@@ -222,6 +245,7 @@ tool_opa.go           evaluate_policy
 opa_capabilities.go   the Rego sandbox
 authzen.go            AuthZEN 1.0 wire types and PDP client
 tool_authzen.go       authzen_evaluate, _batch, _discover
+tool_authzen_search.go  authzen_search
 scripts/smoke.sh      end-to-end MCP session
 ```
 

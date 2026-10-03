@@ -277,6 +277,8 @@ func TestRootOf(t *testing.T) {
 		"https://pdp.example.com" + pathEvaluations:       "https://pdp.example.com",
 		"https://pdp.example.com" + pathMetadata:          "https://pdp.example.com",
 		"https://pdp.example.com/pdp" + pathEvaluation:    "https://pdp.example.com/pdp",
+		"https://pdp.example.com" + pathSearchSubject:     "https://pdp.example.com",
+		"https://pdp.example.com/pdp" + pathSearchAction:  "https://pdp.example.com/pdp",
 		"https://pdp.example.com":                         "https://pdp.example.com",
 		"https://pdp.example.com/":                        "https://pdp.example.com",
 		"http://localhost:8181" + pathEvaluation + "?x=1": "http://localhost:8181",

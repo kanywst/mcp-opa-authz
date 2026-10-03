@@ -60,6 +60,7 @@ func registerAuthZENTools(s *server.MCPServer, client *pdpClient) {
 	registerEvaluateTool(s, client)
 	registerBatchTool(s, client)
 	registerDiscoverTool(s, client)
+	registerSearchTool(s, client)
 }
 
 // --- authzen_evaluate ------------------------------------------------------
@@ -296,6 +297,12 @@ func authzenEvaluateBatch(ctx context.Context, req mcp.CallToolRequest, client *
 // batchEndpointFrom derives the Access Evaluations endpoint from a configured
 // Access Evaluation endpoint.
 func batchEndpointFrom(configured string) (string, error) {
+	return siblingEndpoint(configured, pathEvaluations)
+}
+
+// siblingEndpoint derives another default AuthZEN endpoint from the configured
+// one: same PDP root, the specification's default path for the other API.
+func siblingEndpoint(configured, path string) (string, error) {
 	if configured == "" {
 		return "", pdpErrorf("no PDP endpoint: set %s in the MCP server environment, or pass pdp_url", envPDPURL)
 	}
@@ -303,7 +310,7 @@ func batchEndpointFrom(configured string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return resolveFromRoot(root, pathEvaluations)
+	return resolveFromRoot(root, path)
 }
 
 // --- authzen_discover ------------------------------------------------------

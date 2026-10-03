@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -98,4 +99,39 @@ func jsonKind(v any) string {
 	default:
 		return "a non-object value"
 	}
+}
+
+// optionalNonNegativeInt reads an optional integer argument. A client may send
+// the number as a JSON number or as a string; either way a fractional or
+// negative value is an error rather than something silently truncated, since
+// the value is passed on to a PDP as-is.
+func optionalNonNegativeInt(req mcp.CallToolRequest, name string) (*int, error) {
+	raw, ok := req.GetArguments()[name]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	var f float64
+	switch v := raw.(type) {
+	case float64:
+		f = v
+	case int:
+		f = float64(v)
+	case string:
+		if v == "" {
+			return nil, nil
+		}
+		if err := json.Unmarshal([]byte(v), &f); err != nil {
+			return nil, fmt.Errorf("argument %q must be an integer, got %q", name, v)
+		}
+	default:
+		return nil, fmt.Errorf("argument %q must be an integer, got %s", name, jsonKind(raw))
+	}
+	if f < 0 || f != math.Trunc(f) {
+		return nil, fmt.Errorf("argument %q must be a non-negative integer, got %v", name, f)
+	}
+	if f > math.MaxInt32 {
+		return nil, fmt.Errorf("argument %q is over the maximum of %d", name, math.MaxInt32)
+	}
+	n := int(f)
+	return &n, nil
 }
