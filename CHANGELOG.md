@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **`authzen_evaluate_batch` uses the endpoint the PDP advertises.** AuthZEN 1.0 §Transport says the request URL MUST be the endpoint from the PDP's metadata when one is advertised; the batch tool always derived `/access/v1/evaluations` from `AUTHZEN_PDP_URL`. Without `pdp_url`, it now resolves `access_evaluations_endpoint` exactly as `authzen_search` resolves its endpoints since v0.5.0: from the configured PDP's metadata, cached five minutes, held to the PDP's own origin, falling back to the default path. The result gains `endpoint_source`.
+
 ## [v0.5.0] - 2026-10-03
 
 AuthZEN 1.0 metadata conformance. `authzen_search` now goes where the PDP says

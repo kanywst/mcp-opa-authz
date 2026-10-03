@@ -112,7 +112,7 @@ Returns `decision`, the PDP's `context` if any, the `pdp_url` that answered, and
 
 ### `authzen_evaluate_batch`
 
-Same arguments, plus `evaluations` (a JSON array whose entries override the top-level defaults) and `evaluations_semantic` (`execute_all`, `deny_on_first_deny`, `permit_on_first_permit`). Capped at 100 entries per call.
+Same arguments, plus `evaluations` (a JSON array whose entries override the top-level defaults) and `evaluations_semantic` (`execute_all`, `deny_on_first_deny`, `permit_on_first_permit`). Capped at 100 entries per call. Without `pdp_url`, the endpoint is the `access_evaluations_endpoint` the PDP advertises in its metadata, or `/access/v1/evaluations` under the root of `AUTHZEN_PDP_URL` when it advertises none — the same resolution, cache and same-origin rule as `authzen_search`. `endpoint_source` in the result says which was used.
 
 ```json
 {

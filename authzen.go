@@ -541,3 +541,77 @@ func isStatus(err error, status int) bool {
 	var perr *errPDP
 	return errors.As(err, &perr) && perr.status == status
 }
+
+// Values for the endpoint_source member of a result: where the endpoint the
+// call went to came from.
+const (
+	endpointFromArgument = "pdp_url"  // the tool's pdp_url argument
+	endpointFromMetadata = "metadata" // advertised in the PDP's metadata
+	endpointFromDefault  = "default"  // the default path under the PDP's root
+)
+
+// advertisedOrDefault resolves the endpoint for one AuthZEN API on the
+// configured PDP. AuthZEN 1.0 §Transport: the request URL MUST be the endpoint
+// the PDP's metadata advertises for that API when there is one, and SHOULD be
+// the default path under the PDP's root otherwise.
+//
+// member names the metadata member, for errors; pick reads it; check, if not
+// nil, applies API-specific checks to an advertised value.
+func (c *pdpClient) advertisedOrDefault(
+	ctx context.Context,
+	member, defaultPath string,
+	pick func(*pdpMetadata) string,
+	check func(endpoint string) error,
+) (endpoint, source string, err error) {
+	if c.cfg.PDPURL == "" {
+		return "", "", pdpErrorf("no PDP endpoint: set %s in the MCP server environment, or pass pdp_url", envPDPURL)
+	}
+	root, err := rootOf(c.cfg.PDPURL)
+	if err != nil {
+		return "", "", err
+	}
+	if meta := c.usableMetadata(ctx, root); meta != nil {
+		if advertised := pick(meta); advertised != "" {
+			err := checkAdvertisedEndpoint(advertised, root)
+			if err == nil && check != nil {
+				err = check(advertised)
+			}
+			if err != nil {
+				// The value is PDP-controlled, and the reason may quote it in
+				// full (url.Parse does), so both are bounded before they
+				// reach the model.
+				return "", "", fmt.Errorf("the PDP metadata advertises %s %s, which cannot be used: %s",
+					member, snippet([]byte(advertised)), snippet([]byte(err.Error())))
+			}
+			return advertised, endpointFromMetadata, nil
+		}
+	}
+	endpoint, err = resolveFromRoot(root, defaultPath)
+	return endpoint, endpointFromDefault, err
+}
+
+// checkAdvertisedEndpoint holds an endpoint taken from PDP metadata to the
+// PDP's own origin. The configured token is sent with every call, and the
+// metadata document is whatever the PDP's host served at the well-known path
+// — often a gateway or a static file rather than the PDP. An endpoint on
+// another host, or plain http under an https PDP, would carry the token
+// somewhere the operator never configured it for. A deliberate cross-origin
+// endpoint can still be used by passing it as pdp_url.
+func checkAdvertisedEndpoint(endpoint, root string) error {
+	if err := validatePDPURL(endpoint); err != nil {
+		return err
+	}
+	e, err := url.Parse(endpoint)
+	if err != nil {
+		return err
+	}
+	r, err := url.Parse(root)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(e.Scheme, r.Scheme) || !strings.EqualFold(e.Host, r.Host) {
+		return fmt.Errorf("it is not on the PDP's origin %s://%s, and the PDP token is not "+
+			"sent to another origin; pass it as pdp_url to use it deliberately", r.Scheme, r.Host)
+	}
+	return nil
+}

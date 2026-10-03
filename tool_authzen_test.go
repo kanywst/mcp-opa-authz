@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -570,5 +571,81 @@ func TestDiscover_BoundsTheMismatchedIdentifierInErrors(t *testing.T) {
 	msg := requireToolError(t, callDiscover(t, client, nil), "MUST NOT be used")
 	if len(msg) > 4096 {
 		t.Fatalf("error is %d bytes; policy_decision_point was not bounded", len(msg))
+	}
+}
+
+// batchPDPWithMetadata serves a metadata document built from the root the
+// PDP is reached at, and answers every POST with two permits — batchArgs
+// sends two evaluations.
+func batchPDPWithMetadata(t *testing.T, meta func(root string) map[string]any) (*httptest.Server, *capturedRequest) {
+	t.Helper()
+	return fakePDP(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			writeJSON(w, meta("http://"+r.Host))
+			return
+		}
+		writeJSON(w, map[string]any{"evaluations": []any{
+			map[string]any{"decision": true}, map[string]any{"decision": true},
+		}})
+	})
+}
+
+func batchArgs() map[string]any {
+	return evaluateArgs(map[string]any{"evaluations": `[{},{}]`})
+}
+
+// AuthZEN 1.0 §Transport: the advertised access_evaluations_endpoint MUST be
+// used when there is one.
+func TestBatch_UsesTheEndpointTheMetadataAdvertises(t *testing.T) {
+	pdp, got := batchPDPWithMetadata(t, func(root string) map[string]any {
+		return map[string]any{
+			"policy_decision_point":       root,
+			"access_evaluation_endpoint":  root + pathEvaluation,
+			"access_evaluations_endpoint": root + "/v2/batch",
+		}
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+
+	out := structured[batchOutput](t, callBatch(t, client, batchArgs()))
+	if got.Path != "/v2/batch" || out.EndpointSource != endpointFromMetadata || len(out.Decisions) != 2 {
+		t.Fatalf("POST went to %s (source %q), out = %+v", got.Path, out.EndpointSource, out)
+	}
+}
+
+func TestBatch_FallsBackToTheDefaultPath(t *testing.T) {
+	pdp, got := batchPDPWithMetadata(t, func(root string) map[string]any {
+		return map[string]any{"policy_decision_point": root, "access_evaluation_endpoint": root + pathEvaluation}
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+
+	out := structured[batchOutput](t, callBatch(t, client, batchArgs()))
+	if got.Path != pathEvaluations || out.EndpointSource != endpointFromDefault {
+		t.Fatalf("POST went to %s (source %q)", got.Path, out.EndpointSource)
+	}
+}
+
+func TestBatch_RejectsACrossOriginAdvertisedEndpoint(t *testing.T) {
+	pdp, got := batchPDPWithMetadata(t, func(root string) map[string]any {
+		return map[string]any{"policy_decision_point": root, "access_evaluations_endpoint": "http://evil.example.com/batch"}
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+
+	requireToolError(t, callBatch(t, client, batchArgs()), "access_evaluations_endpoint")
+	if got.Method == http.MethodPost {
+		t.Fatal("a batch was sent to an endpoint off the PDP's origin")
+	}
+}
+
+func TestBatch_ExplicitPDPURLIsReportedAsTheSource(t *testing.T) {
+	pdp, _ := batchPDPWithMetadata(t, func(root string) map[string]any {
+		return map[string]any{"policy_decision_point": root, "access_evaluations_endpoint": root + "/v2/batch"}
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+	args := batchArgs()
+	args["pdp_url"] = pdp.URL + pathEvaluations
+
+	out := structured[batchOutput](t, callBatch(t, client, args))
+	if out.EndpointSource != endpointFromArgument || out.PDPURL != pdp.URL+pathEvaluations {
+		t.Fatalf("out = %+v", out)
 	}
 }
