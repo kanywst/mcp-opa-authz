@@ -136,6 +136,9 @@ type pdpMetadata struct {
 // false. Every path that cannot produce a decision produces one of these.
 type errPDP struct {
 	msg string
+	// status is the PDP's HTTP status when it answered with one other than
+	// 200, and 0 otherwise.
+	status int
 }
 
 func (e *errPDP) Error() string { return e.msg }
@@ -295,8 +298,11 @@ func (c *pdpClient) do(req *http.Request) ([]byte, error) {
 	}
 
 	if res.StatusCode != http.StatusOK {
-		return nil, pdpErrorf("PDP returned HTTP %d: %s%s",
-			res.StatusCode, snippet(raw), statusHint(res.StatusCode))
+		return nil, &errPDP{
+			msg: fmt.Sprintf("PDP returned HTTP %d: %s%s",
+				res.StatusCode, snippet(raw), statusHint(res.StatusCode)),
+			status: res.StatusCode,
+		}
 	}
 	return raw, nil
 }
@@ -400,6 +406,11 @@ func rootOf(endpoint string) (string, error) {
 	if err != nil {
 		return "", pdpErrorf("invalid PDP URL: %v", err)
 	}
+	// The RFC 8615 form of a metadata URL puts the PDP's path after the
+	// well-known string.
+	if rest, ok := strings.CutPrefix(u.Path, pathMetadata); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
+		u.Path = rest
+	}
 	for _, p := range []string{
 		pathEvaluations, pathEvaluation, pathMetadata,
 		pathSearchSubject, pathSearchResource, pathSearchAction,
@@ -422,11 +433,19 @@ func rootOf(endpoint string) (string, error) {
 // hand out endpoints, and the trust that goes with them, for another.
 func (c *pdpClient) fetchMetadata(ctx context.Context, root string) (pdpMetadata, string, error) {
 	var meta pdpMetadata
-	metadataURL, err := resolveFromRoot(root, pathMetadata)
+	candidates, err := metadataURLs(root)
 	if err != nil {
 		return meta, "", err
 	}
-	if err := c.getJSON(ctx, metadataURL, &meta); err != nil {
+	var metadataURL string
+	for _, metadataURL = range candidates {
+		meta = pdpMetadata{}
+		err = c.getJSON(ctx, metadataURL, &meta)
+		if !isStatus(err, http.StatusNotFound) {
+			break
+		}
+	}
+	if err != nil {
 		return meta, metadataURL, err
 	}
 	// A trailing slash is the one difference tolerated: it does not name a
@@ -463,4 +482,39 @@ func (c *pdpClient) usableMetadata(ctx context.Context, root string) *pdpMetadat
 		c.mu.Unlock()
 	}
 	return found
+}
+
+// metadataURLs lists where a PDP root's metadata document may be, in the order
+// to try them. AuthZEN 1.0 §Obtaining PDP Metadata inserts the well-known
+// string between the host and the path (RFC 8615), so a PDP at
+// https://gw.example.com/pdp publishes
+// https://gw.example.com/.well-known/authzen-configuration/pdp. Earlier
+// releases appended it instead (…/pdp/.well-known/authzen-configuration); that
+// form is tried second, on a 404, so a deployment set up to match them keeps
+// working. A root without a path has one location, where both agree.
+func metadataURLs(root string) ([]string, error) {
+	if err := validatePDPURL(root); err != nil {
+		return nil, err
+	}
+	u, err := url.Parse(root)
+	if err != nil {
+		return nil, pdpErrorf("invalid PDP root: %v", err)
+	}
+	path := strings.TrimSuffix(u.Path, "/")
+	u.RawQuery, u.Fragment = "", ""
+
+	inserted := *u
+	inserted.Path = pathMetadata + path
+	if path == "" {
+		return []string{inserted.String()}, nil
+	}
+	appended := *u
+	appended.Path = path + pathMetadata
+	return []string{inserted.String(), appended.String()}, nil
+}
+
+// isStatus reports whether err is a PDP answer with the given HTTP status.
+func isStatus(err error, status int) bool {
+	var perr *errPDP
+	return errors.As(err, &perr) && perr.status == status
 }
