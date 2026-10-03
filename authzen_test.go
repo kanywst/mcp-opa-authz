@@ -278,6 +278,7 @@ func TestRootOf(t *testing.T) {
 		"https://pdp.example.com" + pathMetadata:          "https://pdp.example.com",
 		"https://pdp.example.com/pdp" + pathEvaluation:    "https://pdp.example.com/pdp",
 		"https://pdp.example.com" + pathSearchSubject:     "https://pdp.example.com",
+		"https://pdp.example.com" + pathMetadata + "/t1":  "https://pdp.example.com/t1",
 		"https://pdp.example.com/pdp" + pathSearchAction:  "https://pdp.example.com/pdp",
 		"https://pdp.example.com":                         "https://pdp.example.com",
 		"https://pdp.example.com/":                        "https://pdp.example.com",
@@ -346,5 +347,22 @@ func TestSnippet(t *testing.T) {
 	}
 	if got := snippet([]byte("short")); got != "short" {
 		t.Fatalf("snippet(short) = %q", got)
+	}
+}
+
+func TestMetadataURLs(t *testing.T) {
+	cases := map[string][]string{
+		"https://pdp.example.com":        {"https://pdp.example.com" + pathMetadata},
+		"https://pdp.example.com/":       {"https://pdp.example.com" + pathMetadata},
+		"https://gw.example.com/tenant1": {"https://gw.example.com" + pathMetadata + "/tenant1", "https://gw.example.com/tenant1" + pathMetadata},
+	}
+	for root, want := range cases {
+		got, err := metadataURLs(root)
+		if err != nil || strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Errorf("metadataURLs(%q) = %v, %v; want %v", root, got, err, want)
+		}
+	}
+	if _, err := metadataURLs("ftp://x"); err == nil {
+		t.Error("metadataURLs must validate the root")
 	}
 }

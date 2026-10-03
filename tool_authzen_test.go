@@ -495,9 +495,50 @@ func TestDiscover_PreservesMountPrefix(t *testing.T) {
 	pdp, got := metadataPDP(t, "/pdp", nil)
 	_, client := clientFor(pdp.URL, "/pdp"+pathEvaluation)
 
+	out := structured[discoverOutput](t, callDiscover(t, client, nil))
+	// AuthZEN 1.0 / RFC 8615: the well-known string goes between the host
+	// and the path, so the prefix follows it.
+	if got.Path != pathMetadata+"/pdp" || out.MetadataURL != pdp.URL+pathMetadata+"/pdp" {
+		t.Fatalf("fetched %q (metadata_url %q); a PDP mounted under a prefix keeps it after the well-known string",
+			got.Path, out.MetadataURL)
+	}
+}
+
+// Earlier releases appended the well-known string after the prefix. A PDP set
+// up to match that is still found, after the specification's location 404s.
+func TestDiscover_FallsBackToTheAppendedMetadataPath(t *testing.T) {
+	var paths []string
+	pdp, _ := fakePDP(t, func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path != "/pdp"+pathMetadata {
+			http.NotFound(w, r)
+			return
+		}
+		root := "http://" + r.Host + "/pdp"
+		writeJSON(w, map[string]any{
+			"policy_decision_point":      root,
+			"access_evaluation_endpoint": root + pathEvaluation,
+		})
+	})
+	_, client := clientFor(pdp.URL, "/pdp"+pathEvaluation)
+
 	requireNoToolError(t, callDiscover(t, client, nil))
-	if got.Path != "/pdp"+pathMetadata {
-		t.Fatalf("fetched %q; a PDP mounted under a prefix keeps it", got.Path)
+	if want := []string{pathMetadata + "/pdp", "/pdp" + pathMetadata}; strings.Join(paths, " ") != strings.Join(want, " ") {
+		t.Fatalf("fetched %v, want %v", paths, want)
+	}
+}
+
+// Only a 404 moves on to the next location; any other failure is the answer.
+func TestDiscover_DoesNotFallBackOnOtherErrors(t *testing.T) {
+	var fetches int
+	pdp, _ := fakePDP(t, func(w http.ResponseWriter, _ *http.Request) {
+		fetches++
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	})
+	_, client := clientFor(pdp.URL, "/pdp"+pathEvaluation)
+	requireToolError(t, callDiscover(t, client, nil), "503")
+	if fetches != 1 {
+		t.Fatalf("%d fetches; a 503 is not a reason to try another location", fetches)
 	}
 }
 

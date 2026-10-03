@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **The metadata URL for a PDP under a path prefix was in the wrong place.** AuthZEN 1.0 inserts `/.well-known/authzen-configuration` between the host and the path (RFC 8615), so a PDP at `https://gw.example.com/pdp` publishes `https://gw.example.com/.well-known/authzen-configuration/pdp`. Earlier releases appended it after the prefix. The specification's location is now tried first and the appended one second, only on a 404, so a deployment set up for the old form keeps working. A root without a path is unaffected.
 - **`authzen_discover` used metadata that named a different PDP.** AuthZEN 1.0 requires the document's `policy_decision_point` to be identical to the PDP identifier the well-known URL was built from, and says a document that fails that MUST NOT be used. It is now checked, tolerating only a trailing slash, and a mismatch is a tool error instead of a set of endpoints for some other PDP.
 
 ## [v0.4.0] - 2026-10-03
