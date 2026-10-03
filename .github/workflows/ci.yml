@@ -128,7 +128,7 @@ jobs:
             '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
             '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
             | docker run -i --rm ghcr.io/kanywst/mcp-opa-authz:latest-amd64 \
-            | jq -e 'select(.id == 2) | (.result.tools | length) == 4' > /dev/null
+            | jq -e 'select(.id == 2) | (.result.tools | length) == 5' > /dev/null
 
       # The registry refuses to list an image that does not name the server it
       # belongs to, and says so only at publish time — on a tag, after the
@@ -160,7 +160,7 @@ jobs:
             '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
             '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
             | docker run -i --rm mcp-opa-authz:ci \
-            | jq -e 'select(.id == 2) | (.result.tools | length) == 4' > /dev/null
+            | jq -e 'select(.id == 2) | (.result.tools | length) == 5' > /dev/null
 
   # server.json is published to the MCP registry from a tag; a schema error
   # should surface on the pull request rather than during a release.

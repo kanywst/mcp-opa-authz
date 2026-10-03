@@ -6,6 +6,8 @@
 //	evaluate_policy         Evaluate a Rego module in-process, via OPA.
 //	authzen_evaluate        Ask a remote OpenID AuthZEN 1.0 PDP for a decision.
 //	authzen_evaluate_batch  Ask that PDP for many decisions in one round trip.
+//	authzen_search          Ask that PDP which subjects, resources or actions
+//	                        are permitted.
 //	authzen_discover        Read a PDP's AuthZEN metadata document.
 //
 // Use evaluate_policy while authoring or debugging a policy whose source you
@@ -43,6 +45,8 @@ Tools exposed:
                           in-process. No external service is contacted.
   authzen_evaluate        Ask an AuthZEN 1.0 PDP for one decision.
   authzen_evaluate_batch  Ask an AuthZEN 1.0 PDP for many decisions at once.
+  authzen_search          Ask an AuthZEN 1.0 PDP which subjects, resources or
+                          actions are permitted.
   authzen_discover        Read a PDP's /.well-known/authzen-configuration.
 
 Configuration (environment):
@@ -146,10 +150,15 @@ Pick the tool by where the authoritative answer lives:
   this; a local evaluation is a guess about production.
 - authzen_evaluate_batch — the same question over a list. Filtering resources a
   subject may see, or checking several actions at once, in one round trip.
-- authzen_discover — a PDP's URL is known but its endpoints are not.
+- authzen_search — "who may", "which resources may", "what may": the PDP lists
+  the permitted subjects, resources or actions. Use it when the candidates are
+  not known; when they are, authzen_evaluate_batch checks them directly.
+- authzen_discover — a PDP's URL is known but its endpoints are not, or whether
+  it offers the search endpoints.
 
 A decision of false is a deny, and is a successful call. A tool error means no
-decision was obtained; never report one as the other.`
+decision was obtained; never report one as the other. Likewise an empty search
+result means nothing is permitted; a tool error means the PDP did not answer.`
 
 // resolveVersion prefers the linker-stamped version, and falls back to the
 // module version recorded by the Go toolchain so that `go install`ed builds

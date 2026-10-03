@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **`authzen_search`, the AuthZEN 1.0 Search APIs.** One tool for Subject, Resource and Action Search, selected by `search`: "who may read this document", "which documents may Alice read", "what may Alice do to this document". The endpoint defaults to the specification's `/access/v1/search/{subject,resource,action}` under the root of `AUTHZEN_PDP_URL`, so no new configuration is needed. Pagination is passed through as `page_limit` / `page_token` and reported as `has_more` / `next_page_token`.
+- The search tool holds the same line as the evaluation tools: a response without `results` is an error rather than "nothing is permitted", a `page` object without `next_token` is an error rather than a guess about completeness, and a result whose `type` is not the one searched for is rejected. A search argument that would be silently ignored by the PDP — an `id` on the searched-for entity, an `action` on an action search — is rejected before the request is sent.
+
 ### Fixed
 
 - **The advertised `outputSchema` rejected real results.** Every member passed through from the PDP — `context` on `authzen_evaluate` and on each `authzen_evaluate_batch` decision, `capabilities` and `supported_evaluation_options` from `authzen_discover` — was declared as an array of integers 0–255, because the schema was inferred from `json.RawMessage` as if it were `[]byte`. A client that validates `structuredContent` against `outputSchema`, as the MCP specification says it should, rejected the result whenever the PDP sent one of them. Those members are now declared as any JSON value; nothing else in the schemas changed.

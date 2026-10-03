@@ -25,6 +25,10 @@ const (
 	pathEvaluation  = "/access/v1/evaluation"  // §Access Evaluation
 	pathEvaluations = "/access/v1/evaluations" // §Access Evaluations (batch)
 	pathMetadata    = "/.well-known/authzen-configuration"
+
+	pathSearchSubject  = "/access/v1/search/subject"  // §Subject Search
+	pathSearchResource = "/access/v1/search/resource" // §Resource Search
+	pathSearchAction   = "/access/v1/search/action"   // §Action Search
 )
 
 // evaluationRequest is the Access Evaluation request body.
@@ -72,6 +76,45 @@ const (
 // evaluationsResponse is the batch response body.
 type evaluationsResponse struct {
 	Evaluations []evaluationResponse `json:"evaluations"`
+}
+
+// searchRequest is the body shared by the three Search APIs. Action is absent
+// from an Action Search request, which is why it alone is omitempty among the
+// entities.
+type searchRequest struct {
+	Subject  json.RawMessage    `json:"subject"`
+	Action   json.RawMessage    `json:"action,omitempty"`
+	Resource json.RawMessage    `json:"resource"`
+	Context  json.RawMessage    `json:"context,omitempty"`
+	Page     *searchPageRequest `json:"page,omitempty"`
+}
+
+type searchPageRequest struct {
+	Token string `json:"token,omitempty"`
+	Limit *int   `json:"limit,omitempty"`
+}
+
+// searchResponse is the Search API response body. Results is REQUIRED; like a
+// missing decision, a body without it is a PDP that did not answer, and must
+// not be reported as "nothing is permitted".
+type searchResponse struct {
+	Page    *searchPageResponse `json:"page,omitempty"`
+	Context json.RawMessage     `json:"context,omitempty"`
+	Results []json.RawMessage   `json:"results"`
+}
+
+// searchPageResponse is a response's page object. NextToken is a *string for
+// the same reason Decision is a *bool: the member is REQUIRED whenever a page
+// object is present, and an empty string is the one value that means "this
+// was the last page".
+//
+// Total is a json.Number so that a PDP sending 102.0, or a count past int
+// range, still gets its results through: the member is OPTIONAL and only
+// informational, and failing the whole response over it would trade a correct
+// answer for a tidy one. The equally optional count is not decoded at all.
+type searchPageResponse struct {
+	NextToken *string     `json:"next_token"`
+	Total     json.Number `json:"total,omitempty"`
 }
 
 // pdpMetadata is the PDP Metadata document served at pathMetadata.
@@ -337,7 +380,10 @@ func rootOf(endpoint string) (string, error) {
 	if err != nil {
 		return "", pdpErrorf("invalid PDP URL: %v", err)
 	}
-	for _, p := range []string{pathEvaluations, pathEvaluation, pathMetadata} {
+	for _, p := range []string{
+		pathEvaluations, pathEvaluation, pathMetadata,
+		pathSearchSubject, pathSearchResource, pathSearchAction,
+	} {
 		if strings.HasSuffix(u.Path, p) {
 			u.Path = strings.TrimSuffix(u.Path, p)
 			break

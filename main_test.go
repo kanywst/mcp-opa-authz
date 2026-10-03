@@ -23,6 +23,7 @@ func TestNewServer_RegistersEveryTool(t *testing.T) {
 		"authzen_evaluate",
 		"authzen_evaluate_batch",
 		"authzen_discover",
+		"authzen_search",
 	}
 	for _, name := range want {
 		if _, ok := tools[name]; !ok {
@@ -46,6 +47,7 @@ func TestNewServer_ToolAnnotations(t *testing.T) {
 		"authzen_evaluate":       true,
 		"authzen_evaluate_batch": true,
 		"authzen_discover":       true,
+		"authzen_search":         true,
 	}
 
 	for name, wantOpen := range openWorld {
@@ -83,6 +85,7 @@ func TestNewServer_OutputSchemasMatchResults(t *testing.T) {
 		"authzen_evaluate":       evaluateOutput{},
 		"authzen_evaluate_batch": batchOutput{},
 		"authzen_discover":       discoverOutput{},
+		"authzen_search":         searchOutput{},
 	} {
 		st, ok := tools[name]
 		if !ok {
@@ -138,6 +141,7 @@ func isOmitEmpty(v any, prop string) bool {
 func TestInstructions_NameEveryTool(t *testing.T) {
 	for _, name := range []string{
 		"evaluate_policy", "authzen_evaluate", "authzen_evaluate_batch", "authzen_discover",
+		"authzen_search",
 	} {
 		if !strings.Contains(instructions, name) {
 			t.Errorf("the server instructions do not mention %q", name)

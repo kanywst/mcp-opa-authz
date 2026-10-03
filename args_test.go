@@ -172,3 +172,45 @@ func TestJSONKind(t *testing.T) {
 		t.Errorf("asJSONObject rejected an object: %v", err)
 	}
 }
+
+func TestOptionalNonNegativeInt(t *testing.T) {
+	for _, tc := range []struct {
+		in      any
+		want    int
+		absent  bool
+		wantErr bool
+	}{
+		{in: nil, absent: true},
+		{in: "", absent: true},
+		{in: float64(0), want: 0},
+		{in: float64(50), want: 50},
+		{in: 7, want: 7},
+		{in: "12", want: 12},
+		{in: float64(-1), wantErr: true},
+		{in: 1.5, wantErr: true},
+		{in: "1.5", wantErr: true},
+		{in: "x", wantErr: true},
+		{in: true, wantErr: true},
+		{in: float64(1 << 40), wantErr: true},
+	} {
+		args := map[string]any{}
+		if tc.in != nil {
+			args["n"] = tc.in
+		}
+		got, err := optionalNonNegativeInt(newRequest("t", args), "n")
+		switch {
+		case tc.wantErr:
+			if err == nil {
+				t.Errorf("%v: expected an error, got %v", tc.in, got)
+			}
+		case err != nil:
+			t.Errorf("%v: %v", tc.in, err)
+		case tc.absent:
+			if got != nil {
+				t.Errorf("%v: got %d, want absent", tc.in, *got)
+			}
+		case got == nil || *got != tc.want:
+			t.Errorf("%v: got %v, want %d", tc.in, got, tc.want)
+		}
+	}
+}
