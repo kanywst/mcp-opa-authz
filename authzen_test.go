@@ -320,20 +320,6 @@ func TestResolveFromRoot(t *testing.T) {
 	}
 }
 
-func TestBatchEndpointFrom(t *testing.T) {
-	got, err := batchEndpointFrom("https://pdp.example.com" + pathEvaluation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "https://pdp.example.com"+pathEvaluations {
-		t.Fatalf("batchEndpointFrom = %q", got)
-	}
-
-	if _, err := batchEndpointFrom(""); err == nil {
-		t.Fatal("expected an error with nothing configured")
-	}
-}
-
 func TestSnippet(t *testing.T) {
 	if got := snippet(nil); got != "(empty body)" {
 		t.Fatalf("snippet(nil) = %q", got)

@@ -453,14 +453,13 @@ func TestSearch_ValidatesTheAdvertisedEndpoint(t *testing.T) {
 func TestCheckAdvertisedEndpoint(t *testing.T) {
 	root := "https://pdp.example.com"
 	for endpoint, want := range map[string]string{
-		"https://pdp.example.com/v2/search":           "",
-		"https://PDP.example.com/v2/search":           "",
-		"http://pdp.example.com/v2/search":            "origin",
-		"https://evil.example.com/v2/search":          "origin",
-		"https://pdp.example.com:8443/search":         "origin",
-		"https://pdp.example.com" + pathSearchSubject: "subject search endpoint",
+		"https://pdp.example.com/v2/search":   "",
+		"https://PDP.example.com/v2/search":   "",
+		"http://pdp.example.com/v2/search":    "origin",
+		"https://evil.example.com/v2/search":  "origin",
+		"https://pdp.example.com:8443/search": "origin",
 	} {
-		err := checkAdvertisedEndpoint(endpoint, root, searchResource)
+		err := checkAdvertisedEndpoint(endpoint, root)
 		switch {
 		case want == "" && err != nil:
 			t.Errorf("%s: unexpected error %v", endpoint, err)
@@ -620,4 +619,14 @@ func TestSearch_BoundsAdvertisedValuesInErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+// An advertised endpoint for one kind of search that is another kind's default
+// path is refused, as a pdp_url argument would be.
+func TestSearch_RejectsAnAdvertisedEndpointOfAnotherKind(t *testing.T) {
+	pdp, _, _ := searchPDPWithMetadata(t, func(root string) map[string]any {
+		return map[string]any{"policy_decision_point": root, "search_resource_endpoint": root + pathSearchSubject}
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+	requireToolError(t, callSearch(t, client, searchArgs(searchResource, nil)), "subject search endpoint")
 }

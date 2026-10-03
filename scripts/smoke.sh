@@ -221,7 +221,9 @@ DELETE=$(jq -r '.decisions[1].decision' <<<"$BATCH")
 COUNT=$(jq -r '.decisions | length' <<<"$BATCH")
 [[ "$COUNT" == "2" ]] || fail "authzen_evaluate_batch returned $COUNT decisions, expected 2" 1
 [[ "$READ" == "true" && "$DELETE" == "false" ]] || fail "authzen_evaluate_batch decisions are misaligned (read=$READ delete=$DELETE)" 1
-echo "✓ smoke: authzen_evaluate_batch returned 2 aligned decisions"
+BATCH_SOURCE=$(jq -r '.endpoint_source' <<<"$BATCH")
+[[ "$BATCH_SOURCE" == "metadata" ]] || fail "authzen_evaluate_batch took its endpoint from '$BATCH_SOURCE', not from the advertised metadata" 1
+echo "✓ smoke: authzen_evaluate_batch returned 2 aligned decisions from the advertised endpoint"
 
 # --- authzen_discover ---
 DISCOVER=$(result_of 6)

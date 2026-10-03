@@ -51,13 +51,6 @@ type searchOutput struct {
 	EndpointSource string `json:"endpoint_source"`
 }
 
-// Values for searchOutput.EndpointSource.
-const (
-	endpointFromArgument = "pdp_url"
-	endpointFromMetadata = "metadata"
-	endpointFromDefault  = "default"
-)
-
 func registerSearchTool(s *server.MCPServer, client *pdpClient) {
 	s.AddTool(
 		mcp.NewTool("authzen_search",
@@ -270,65 +263,17 @@ func readSearchArgs(req mcp.CallToolRequest, cfg *config, kind string) (searchRe
 }
 
 // resolveSearchEndpoint finds the endpoint for one kind of search on the
-// configured PDP. AuthZEN 1.0 §Transport: the request URL MUST be the endpoint
-// the PDP's metadata advertises for that API when there is one, and SHOULD be
-// the default path under the PDP's root otherwise.
+// configured PDP: the one its metadata advertises, else the default path.
 func resolveSearchEndpoint(ctx context.Context, client *pdpClient, kind, path string) (endpoint, source string, err error) {
-	if client.cfg.PDPURL == "" {
-		return "", "", pdpErrorf("no PDP endpoint: set %s in the MCP server environment, or pass pdp_url", envPDPURL)
-	}
-	root, err := rootOf(client.cfg.PDPURL)
-	if err != nil {
-		return "", "", err
-	}
-	if meta := client.usableMetadata(ctx, root); meta != nil {
-		advertised := map[string]string{
-			searchSubject:  meta.SearchSubjectEndpoint,
-			searchResource: meta.SearchResourceEndpoint,
-			searchAction:   meta.SearchActionEndpoint,
-		}[kind]
-		if advertised != "" {
-			if err := checkAdvertisedEndpoint(advertised, root, kind); err != nil {
-				// The value is PDP-controlled, and the reason may quote it in
-				// full (url.Parse and checkSearchEndpoint both do), so both are
-				// bounded before they reach the model.
-				return "", "", fmt.Errorf("the PDP metadata advertises search_%s_endpoint %s, "+
-					"which cannot be used: %s", kind, snippet([]byte(advertised)), snippet([]byte(err.Error())))
-			}
-			return advertised, endpointFromMetadata, nil
-		}
-	}
-	endpoint, err = resolveFromRoot(root, path)
-	return endpoint, endpointFromDefault, err
-}
-
-// checkAdvertisedEndpoint holds an endpoint taken from PDP metadata to the
-// PDP's own origin. The configured token is sent with every search, and the
-// metadata document is whatever the PDP's host served at the well-known path
-// — often a gateway or a static file rather than the PDP. An endpoint on
-// another host, or plain http under an https PDP, would carry the token
-// somewhere the operator never configured it for. A deliberate cross-origin
-// endpoint can still be used by passing it as pdp_url.
-func checkAdvertisedEndpoint(endpoint, root, kind string) error {
-	if err := validatePDPURL(endpoint); err != nil {
-		return err
-	}
-	if err := checkSearchEndpoint(endpoint, kind); err != nil {
-		return err
-	}
-	e, err := url.Parse(endpoint)
-	if err != nil {
-		return err
-	}
-	r, err := url.Parse(root)
-	if err != nil {
-		return err
-	}
-	if !strings.EqualFold(e.Scheme, r.Scheme) || !strings.EqualFold(e.Host, r.Host) {
-		return fmt.Errorf("it is not on the PDP's origin %s://%s, and the PDP token is not "+
-			"sent to another origin; pass it as pdp_url to use it deliberately", r.Scheme, r.Host)
-	}
-	return nil
+	return client.advertisedOrDefault(ctx, "search_"+kind+"_endpoint", path,
+		func(m *pdpMetadata) string {
+			return map[string]string{
+				searchSubject:  m.SearchSubjectEndpoint,
+				searchResource: m.SearchResourceEndpoint,
+				searchAction:   m.SearchActionEndpoint,
+			}[kind]
+		},
+		func(endpoint string) error { return checkSearchEndpoint(endpoint, kind) })
 }
 
 // checkSearchEndpoint rejects a pdp_url that names the default path of a

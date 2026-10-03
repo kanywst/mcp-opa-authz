@@ -42,6 +42,9 @@ type batchOutput struct {
 	Truncated bool   `json:"truncated"`
 	PDPURL    string `json:"pdp_url"`
 	RequestID string `json:"request_id"`
+	// EndpointSource says where PDPURL came from: "pdp_url", "metadata"
+	// (the PDP's advertised access_evaluations_endpoint) or "default".
+	EndpointSource string `json:"endpoint_source"`
 }
 
 type batchDecision struct {
@@ -195,8 +198,10 @@ func registerBatchTool(s *server.MCPServer, client *pdpClient) {
 				mcp.Enum(semanticExecuteAll, semanticDenyOnFirstDeny, semanticPermitOnFirstPerm),
 			),
 			mcp.WithString("pdp_url",
-				mcp.Description("Override the configured "+envPDPURL+" for this call. "+
-					"Must point at an Access Evaluations (plural) endpoint."),
+				mcp.Description("Override the endpoint for this call. Must point at an "+
+					"Access Evaluations (plural) endpoint. Defaults to the one the configured "+
+					"PDP advertises in its metadata, or the default path under the root of "+
+					envPDPURL+" when it advertises none."),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -206,13 +211,16 @@ func registerBatchTool(s *server.MCPServer, client *pdpClient) {
 }
 
 func authzenEvaluateBatch(ctx context.Context, req mcp.CallToolRequest, client *pdpClient) (*mcp.CallToolResult, error) {
-	endpoint := req.GetString("pdp_url", "")
+	endpoint, source := req.GetString("pdp_url", ""), endpointFromArgument
 	if endpoint == "" {
-		// The configured URL names the single-evaluation endpoint. Deriving the
-		// plural one from it is what an operator would do by hand, and saves
-		// every client config from having to carry both.
+		// The configured URL names the single-evaluation endpoint. The plural
+		// one is the PDP's to name in its metadata, and otherwise sits at the
+		// default path under the same root — which saves every client config
+		// from having to carry both.
 		var err error
-		if endpoint, err = batchEndpointFrom(client.cfg.PDPURL); err != nil {
+		endpoint, source, err = client.advertisedOrDefault(ctx, "access_evaluations_endpoint", pathEvaluations,
+			func(m *pdpMetadata) string { return m.AccessEvaluationsEndpoint }, nil)
+		if err != nil {
 			return toolErrorf("%v", err), nil
 		}
 	}
@@ -285,32 +293,14 @@ func authzenEvaluateBatch(ctx context.Context, req mcp.CallToolRequest, client *
 	}
 
 	out := batchOutput{
-		Decisions: decisions,
-		Semantic:  semantic,
-		Truncated: len(decisions) < len(entries),
-		PDPURL:    endpoint,
-		RequestID: requestID,
+		Decisions:      decisions,
+		Semantic:       semantic,
+		Truncated:      len(decisions) < len(entries),
+		PDPURL:         endpoint,
+		RequestID:      requestID,
+		EndpointSource: source,
 	}
 	return structuredResult(out)
-}
-
-// batchEndpointFrom derives the Access Evaluations endpoint from a configured
-// Access Evaluation endpoint.
-func batchEndpointFrom(configured string) (string, error) {
-	return siblingEndpoint(configured, pathEvaluations)
-}
-
-// siblingEndpoint derives another default AuthZEN endpoint from the configured
-// one: same PDP root, the specification's default path for the other API.
-func siblingEndpoint(configured, path string) (string, error) {
-	if configured == "" {
-		return "", pdpErrorf("no PDP endpoint: set %s in the MCP server environment, or pass pdp_url", envPDPURL)
-	}
-	root, err := rootOf(configured)
-	if err != nil {
-		return "", err
-	}
-	return resolveFromRoot(root, path)
 }
 
 // --- authzen_discover ------------------------------------------------------
