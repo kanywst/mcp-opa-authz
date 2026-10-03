@@ -289,10 +289,11 @@ func resolveSearchEndpoint(ctx context.Context, client *pdpClient, kind, path st
 		}[kind]
 		if advertised != "" {
 			if err := checkAdvertisedEndpoint(advertised, root, kind); err != nil {
-				// The value is PDP-controlled, so it is bounded before it
-				// reaches the model, like any other PDP text in an error.
+				// The value is PDP-controlled, and the reason may quote it in
+				// full (url.Parse and checkSearchEndpoint both do), so both are
+				// bounded before they reach the model.
 				return "", "", fmt.Errorf("the PDP metadata advertises search_%s_endpoint %s, "+
-					"which cannot be used: %w", kind, snippet([]byte(advertised)), err)
+					"which cannot be used: %s", kind, snippet([]byte(advertised)), snippet([]byte(err.Error())))
 			}
 			return advertised, endpointFromMetadata, nil
 		}

@@ -599,13 +599,25 @@ func TestSearch_ConcurrentSearchesShareTheCache(t *testing.T) {
 
 // PDP-controlled metadata strings reach the model only through snippet().
 func TestSearch_BoundsAdvertisedValuesInErrors(t *testing.T) {
-	huge := "https://evil.example.com/" + strings.Repeat("a", 64<<10)
-	pdp, _, _ := searchPDPWithMetadata(t, func(root string) map[string]any {
-		return map[string]any{"policy_decision_point": root, "search_resource_endpoint": huge}
-	})
-	_, client := clientFor(pdp.URL, pathEvaluation)
-	msg := requireToolError(t, callSearch(t, client, searchArgs(searchResource, nil)), "PDP metadata advertises")
-	if len(msg) > 4096 {
-		t.Fatalf("error is %d bytes; the advertised value was not bounded", len(msg))
+	padding := strings.Repeat("a", 64<<10)
+	cases := map[string]func(root string) string{
+		"cross-origin": func(string) string { return "https://evil.example.com/" + padding },
+		// Same origin, but ending in another kind's path: the reason itself
+		// quotes the URL.
+		"wrong kind": func(root string) string { return root + "/" + padding + pathSearchSubject },
+		// Unparseable: url.Parse quotes its input.
+		"invalid URL": func(root string) string { return root + "/%zz" + padding },
+	}
+	for name, endpoint := range cases {
+		t.Run(name, func(t *testing.T) {
+			pdp, _, _ := searchPDPWithMetadata(t, func(root string) map[string]any {
+				return map[string]any{"policy_decision_point": root, "search_resource_endpoint": endpoint(root)}
+			})
+			_, client := clientFor(pdp.URL, pathEvaluation)
+			msg := requireToolError(t, callSearch(t, client, searchArgs(searchResource, nil)), "PDP metadata advertises")
+			if len(msg) > 4096 {
+				t.Fatalf("error is %d bytes; the advertised value was not bounded", len(msg))
+			}
+		})
 	}
 }
