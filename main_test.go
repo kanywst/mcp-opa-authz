@@ -283,8 +283,8 @@ func newPassThroughPDP(t *testing.T) *httptest.Server {
 			}})
 		case pathMetadata:
 			writeJSON(w, map[string]any{
-				"policy_decision_point":        "https://pdp.example.com",
-				"access_evaluation_endpoint":   "https://pdp.example.com" + pathEvaluation,
+				"policy_decision_point":        "http://" + r.Host,
+				"access_evaluation_endpoint":   "http://" + r.Host + pathEvaluation,
 				"capabilities":                 []any{"urn:example:cap"},
 				"supported_evaluation_options": map[string]any{"evaluations_semantic": []any{"execute_all"}},
 			})

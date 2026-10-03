@@ -394,3 +394,28 @@ func rootOf(endpoint string) (string, error) {
 	u.Fragment = ""
 	return u.String(), nil
 }
+
+// fetchMetadata reads the PDP Metadata document for a PDP root and checks it
+// may be used. AuthZEN 1.0 requires `policy_decision_point` to be identical to
+// the identifier the well-known URL was built from, and says a document that
+// fails that "MUST NOT be used": otherwise a PDP mounted under one name can
+// hand out endpoints, and the trust that goes with them, for another.
+func (c *pdpClient) fetchMetadata(ctx context.Context, root string) (pdpMetadata, string, error) {
+	var meta pdpMetadata
+	metadataURL, err := resolveFromRoot(root, pathMetadata)
+	if err != nil {
+		return meta, "", err
+	}
+	if err := c.getJSON(ctx, metadataURL, &meta); err != nil {
+		return meta, metadataURL, err
+	}
+	// A trailing slash is the one difference tolerated: it does not name a
+	// different PDP, and rootOf never produces one.
+	if strings.TrimSuffix(meta.PolicyDecisionPoint, "/") != strings.TrimSuffix(root, "/") {
+		return meta, metadataURL, pdpErrorf(
+			"metadata at %s names policy_decision_point %q, which is not the PDP it was "+
+				"fetched from (%s); AuthZEN 1.0 says such a document MUST NOT be used",
+			metadataURL, meta.PolicyDecisionPoint, root)
+	}
+	return meta, metadataURL, nil
+}
