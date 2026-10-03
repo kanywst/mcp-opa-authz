@@ -136,8 +136,11 @@ type pdpMetadata struct {
 // false. Every path that cannot produce a decision produces one of these.
 type errPDP struct {
 	msg string
-	// status is the PDP's HTTP status when it answered with one other than
-	// 200, and 0 otherwise.
+	// status is the HTTP status of the answer this error is about: the
+	// status of a non-200 response, 200 for a response whose body could not
+	// be used, and 0 when no answer arrived at all (timeout, refused
+	// connection). It lets a caller tell "the PDP said no" from "the PDP
+	// did not say".
 	status int
 }
 
@@ -271,7 +274,10 @@ func (c *pdpClient) getJSON(ctx context.Context, endpoint string, out any) error
 		return err
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return pdpErrorf("response is not valid JSON: %v (body: %s)", err, snippet(raw))
+		return &errPDP{
+			msg:    fmt.Sprintf("response is not valid JSON: %v (body: %s)", err, snippet(raw)),
+			status: http.StatusOK,
+		}
 	}
 	return nil
 }
@@ -451,18 +457,29 @@ func (c *pdpClient) fetchMetadata(ctx context.Context, root string) (pdpMetadata
 	// A trailing slash is the one difference tolerated: it does not name a
 	// different PDP, and rootOf never produces one.
 	if strings.TrimSuffix(meta.PolicyDecisionPoint, "/") != strings.TrimSuffix(root, "/") {
-		return meta, metadataURL, pdpErrorf(
-			"metadata at %s names policy_decision_point %q, which is not the PDP it was "+
-				"fetched from (%s); AuthZEN 1.0 says such a document MUST NOT be used",
-			metadataURL, meta.PolicyDecisionPoint, root)
+		return meta, metadataURL, &errPDP{
+			msg: fmt.Sprintf(
+				"metadata at %s names policy_decision_point %q, which is not the PDP it was "+
+					"fetched from (%s); AuthZEN 1.0 says such a document MUST NOT be used",
+				metadataURL, meta.PolicyDecisionPoint, root),
+			status: http.StatusOK,
+		}
 	}
 	return meta, metadataURL, nil
 }
 
 // usableMetadata returns root's metadata document if it can be fetched and
-// passes fetchMetadata's checks, or nil. Either answer is cached for
-// metadataCacheTTL. Failure is not an error here: the specification makes the
-// metadata document optional and falls back to the default paths without it.
+// passes fetchMetadata's checks, or nil. Failure is not an error here: the
+// specification makes the metadata document optional and falls back to the
+// default paths without it.
+//
+// Only a definite answer is cached for metadataCacheTTL — a usable document,
+// or the PDP saying it has none (404, 410, a body that is not usable
+// metadata). A failure that says nothing about the PDP's layout — a timeout, a
+// 5xx, a 401 — is not cached, and leaves a previously fetched document in
+// use: replacing it with "no metadata" would send searches to the default
+// path for the whole TTL, when the specification says the advertised endpoint
+// MUST be used.
 func (c *pdpClient) usableMetadata(ctx context.Context, root string) *pdpMetadata {
 	c.mu.Lock()
 	e, ok := c.metadata[root]
@@ -471,16 +488,22 @@ func (c *pdpClient) usableMetadata(ctx context.Context, root string) *pdpMetadat
 		return e.meta
 	}
 
+	meta, _, err := c.fetchMetadata(ctx, root)
 	var found *pdpMetadata
-	if meta, _, err := c.fetchMetadata(ctx, root); err == nil {
+	switch {
+	case err == nil:
 		found = &meta
+	case isStatus(err, http.StatusOK), isStatus(err, http.StatusNotFound), isStatus(err, http.StatusGone):
+		// The PDP answered, and has no usable document.
+	default:
+		if ok {
+			return e.meta
+		}
+		return nil
 	}
-	// A call cancelled by its client says nothing about the PDP.
-	if ctx.Err() == nil {
-		c.mu.Lock()
-		c.metadata[root] = metadataEntry{meta: found, fetched: c.now()}
-		c.mu.Unlock()
-	}
+	c.mu.Lock()
+	c.metadata[root] = metadataEntry{meta: found, fetched: c.now()}
+	c.mu.Unlock()
 	return found
 }
 
