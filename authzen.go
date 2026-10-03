@@ -461,7 +461,7 @@ func (c *pdpClient) fetchMetadata(ctx context.Context, root string) (pdpMetadata
 			msg: fmt.Sprintf(
 				"metadata at %s names policy_decision_point %q, which is not the PDP it was "+
 					"fetched from (%s); AuthZEN 1.0 says such a document MUST NOT be used",
-				metadataURL, meta.PolicyDecisionPoint, root),
+				metadataURL, snippet([]byte(meta.PolicyDecisionPoint)), root),
 			status: http.StatusOK,
 		}
 	}
