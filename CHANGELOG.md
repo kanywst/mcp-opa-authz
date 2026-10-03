@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.4.0] - 2026-10-03
+
+A fifth tool, `authzen_search`, completes the AuthZEN 1.0 Final surface, and a
+schema fix makes structured results usable by clients that validate them.
+
 ### Added
 
 - **`authzen_search`, the AuthZEN 1.0 Search APIs.** One tool for Subject, Resource and Action Search, selected by `search`: "who may read this document", "which documents may Alice read", "what may Alice do to this document". The endpoint defaults to the specification's `/access/v1/search/{subject,resource,action}` under the root of `AUTHZEN_PDP_URL`, so no new configuration is needed. Pagination is passed through as `page_limit` / `page_token` and reported as `has_more` / `next_page_token`.
@@ -14,6 +19,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - **The advertised `outputSchema` rejected real results.** Every member passed through from the PDP — `context` on `authzen_evaluate` and on each `authzen_evaluate_batch` decision, `capabilities` and `supported_evaluation_options` from `authzen_discover` — was declared as an array of integers 0–255, because the schema was inferred from `json.RawMessage` as if it were `[]byte`. A client that validates `structuredContent` against `outputSchema`, as the MCP specification says it should, rejected the result whenever the PDP sent one of them. Those members are now declared as any JSON value; nothing else in the schemas changed.
+
+### Compatibility
+
+- No configuration change is needed to upgrade from v0.3.x. `authzen_search` derives its endpoints from `AUTHZEN_PDP_URL`, and needs a PDP that implements the Search APIs.
+- The existing four tools keep their arguments and results. Their advertised `outputSchema` changes only for the pass-through members listed above.
 
 ## [v0.3.1] - 2026-09-29
 
@@ -123,7 +133,8 @@ The first release since the `mcp-opa` / `mcp-authzen` merge. It brings the AuthZ
 
 First release after merging `0-draft/mcp-opa` and `0-draft/mcp-authzen` into one binary. Two tools, `evaluate_policy` and `authzen_evaluate`, over MCP stdio.
 
-[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.4.0...HEAD
+[v0.4.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.3.1...v0.4.0
 [v0.3.1]: https://github.com/kanywst/mcp-opa-authz/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.2.1...v0.3.0
 [v0.2.1]: https://github.com/kanywst/mcp-opa-authz/compare/v0.2.0...v0.2.1
