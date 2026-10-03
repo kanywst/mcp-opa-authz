@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **The advertised `outputSchema` rejected real results.** Every member passed through from the PDP — `context` on `authzen_evaluate` and on each `authzen_evaluate_batch` decision, `capabilities` and `supported_evaluation_options` from `authzen_discover` — was declared as an array of integers 0–255, because the schema was inferred from `json.RawMessage` as if it were `[]byte`. A client that validates `structuredContent` against `outputSchema`, as the MCP specification says it should, rejected the result whenever the PDP sent one of them. Those members are now declared as any JSON value; nothing else in the schemas changed.
+
 ## [v0.3.1] - 2026-09-29
 
 Dependencies only. The four tools, their arguments, their output schemas and

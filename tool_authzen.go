@@ -81,7 +81,7 @@ func registerEvaluateTool(s *server.MCPServer, client *pdpClient) {
 			mcp.WithDestructiveHintAnnotation(false),
 			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithOpenWorldHintAnnotation(true),
-			mcp.WithOutputSchema[evaluateOutput](),
+			withOutputSchema[evaluateOutput](),
 			mcp.WithString("subject",
 				mcp.Required(),
 				mcp.Description(`JSON object identifying the principal. AuthZEN requires `+
@@ -164,7 +164,7 @@ func registerBatchTool(s *server.MCPServer, client *pdpClient) {
 			mcp.WithDestructiveHintAnnotation(false),
 			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithOpenWorldHintAnnotation(true),
-			mcp.WithOutputSchema[batchOutput](),
+			withOutputSchema[batchOutput](),
 			mcp.WithString("evaluations",
 				mcp.Required(),
 				mcp.Description(`JSON array of evaluation objects. Each may carry its own `+
@@ -321,7 +321,7 @@ func registerDiscoverTool(s *server.MCPServer, client *pdpClient) {
 			mcp.WithDestructiveHintAnnotation(false),
 			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithOpenWorldHintAnnotation(true),
-			mcp.WithOutputSchema[discoverOutput](),
+			withOutputSchema[discoverOutput](),
 			mcp.WithString("pdp_url",
 				mcp.Description("The PDP root, e.g. `https://pdp.example.com`. An "+
 					"evaluation endpoint URL is also accepted — the known AuthZEN path "+

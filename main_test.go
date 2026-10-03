@@ -2,11 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // Every tool the documentation and the instructions promise must actually be
@@ -215,5 +219,107 @@ func TestToolErrorf(t *testing.T) {
 	tc, ok := mcp.AsTextContent(res.Content[0])
 	if !ok || tc.Text != "something went wrong" {
 		t.Fatalf("content = %#v", res.Content[0])
+	}
+}
+
+// The declared outputSchema has to accept what the handler actually returns.
+// Comparing property names is not enough: json.RawMessage reflects as []byte,
+// and a schema of byte arrays has the right names and rejects every PDP
+// context. Each result here carries the pass-through members filled in.
+func TestNewServer_OutputSchemasAcceptRealResults(t *testing.T) {
+	pdp := newPassThroughPDP(t)
+	cfg := testConfig()
+	cfg.PDPURL = pdp.URL + pathEvaluation
+	tools := newServer(cfg).ListTools()
+	client := newPDPClient(cfg)
+	ctx := context.Background()
+
+	results := map[string]*mcp.CallToolResult{}
+	var err error
+	if results["evaluate_policy"], err = evaluatePolicy(ctx, newRequest("evaluate_policy", map[string]any{
+		"rego":       "package p\n\nallow if input.user == \"alice\"\n\nobj := {\"a\": [1, 2]}",
+		"query":      "data.p",
+		"input_json": `{"user":"alice"}`,
+	}), cfg); err != nil {
+		t.Fatal(err)
+	}
+	if results["authzen_evaluate"], err = authzenEvaluate(ctx, newRequest("authzen_evaluate", evaluateArgs(nil)), client); err != nil {
+		t.Fatal(err)
+	}
+	if results["authzen_evaluate_batch"], err = authzenEvaluateBatch(ctx, newRequest("authzen_evaluate_batch", evaluateArgs(map[string]any{
+		"evaluations": `[{},{}]`,
+	})), client); err != nil {
+		t.Fatal(err)
+	}
+	if results["authzen_discover"], err = authzenDiscover(ctx, newRequest("authzen_discover", nil), client); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, res := range results {
+		t.Run(name, func(t *testing.T) {
+			requireNoToolError(t, res)
+			validateAgainstOutputSchema(t, tools[name].Tool, res.StructuredContent)
+		})
+	}
+}
+
+// newPassThroughPDP answers every AuthZEN endpoint with the optional members
+// that this server passes through untouched, so that they reach the schema.
+func newPassThroughPDP(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv, _ := fakePDP(t, func(w http.ResponseWriter, r *http.Request) {
+		ctx := map[string]any{"reason": "policy-7", "obligations": []any{"log"}}
+		switch r.URL.Path {
+		case pathEvaluation:
+			writeJSON(w, map[string]any{"decision": true, "context": ctx})
+		case pathEvaluations:
+			writeJSON(w, map[string]any{"evaluations": []any{
+				map[string]any{"decision": true, "context": ctx},
+				map[string]any{"decision": false},
+			}})
+		case pathMetadata:
+			writeJSON(w, map[string]any{
+				"policy_decision_point":        "https://pdp.example.com",
+				"access_evaluation_endpoint":   "https://pdp.example.com" + pathEvaluation,
+				"capabilities":                 []any{"urn:example:cap"},
+				"supported_evaluation_options": map[string]any{"evaluations_semantic": []any{"execute_all"}},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	return srv
+}
+
+func validateAgainstOutputSchema(t *testing.T, tool mcp.Tool, value any) {
+	t.Helper()
+	schemaJSON, err := json.Marshal(tool.OutputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemaDoc, err := jsonschema.UnmarshalJSON(bytes.NewReader(schemaJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource("schema.json", schemaDoc); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := c.Compile("schema.json")
+	if err != nil {
+		t.Fatalf("advertised output schema does not compile: %v\n%s", err, schemaJSON)
+	}
+
+	// Validate the value as a client would see it: decoded from the wire.
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.Validate(instance); err != nil {
+		t.Fatalf("%s: a real result fails the advertised outputSchema: %v\nresult: %s", tool.Name, err, encoded)
 	}
 }

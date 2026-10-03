@@ -89,7 +89,7 @@ func registerOPATool(s *server.MCPServer, cfg *config) {
 			mcp.WithDestructiveHintAnnotation(false),
 			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithOpenWorldHintAnnotation(false),
-			mcp.WithOutputSchema[evaluateResult](),
+			withOutputSchema[evaluateResult](),
 			mcp.WithString("rego",
 				mcp.Required(),
 				mcp.Description("Rego source for the policy module. Must include a "+
