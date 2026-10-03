@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -445,4 +446,153 @@ func TestSearch_ValidatesTheAdvertisedEndpoint(t *testing.T) {
 	})
 	_, client := clientFor(pdp.URL, pathEvaluation)
 	requireToolError(t, callSearch(t, client, searchArgs(searchResource, nil)), "userinfo")
+}
+
+// An advertised endpoint on another origin, or plain http under an https PDP,
+// would carry the PDP token somewhere the operator never configured it for.
+func TestCheckAdvertisedEndpoint(t *testing.T) {
+	root := "https://pdp.example.com"
+	for endpoint, want := range map[string]string{
+		"https://pdp.example.com/v2/search":           "",
+		"https://PDP.example.com/v2/search":           "",
+		"http://pdp.example.com/v2/search":            "origin",
+		"https://evil.example.com/v2/search":          "origin",
+		"https://pdp.example.com:8443/search":         "origin",
+		"https://pdp.example.com" + pathSearchSubject: "subject search endpoint",
+	} {
+		err := checkAdvertisedEndpoint(endpoint, root, searchResource)
+		switch {
+		case want == "" && err != nil:
+			t.Errorf("%s: unexpected error %v", endpoint, err)
+		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
+			t.Errorf("%s: error %v, want one mentioning %q", endpoint, err, want)
+		}
+	}
+}
+
+func TestSearch_RejectsACrossOriginAdvertisedEndpoint(t *testing.T) {
+	pdp, got, _ := searchPDPWithMetadata(t, func(root string) map[string]any {
+		return map[string]any{
+			"policy_decision_point":    root,
+			"search_resource_endpoint": "https://evil.example.com/search",
+		}
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+	msg := requireToolError(t, callSearch(t, client, searchArgs(searchResource, nil)), "PDP metadata advertises")
+	if got.Method == http.MethodPost {
+		t.Fatalf("a search was sent despite: %s", msg)
+	}
+}
+
+// flakyMetadataPDP serves the metadata document while ok is true and a 503
+// otherwise; searches always succeed.
+func flakyMetadataPDP(t *testing.T, ok *atomic.Bool) (*httptest.Server, *capturedRequest, *atomic.Int32) {
+	t.Helper()
+	var fetches atomic.Int32
+	srv, got := fakePDP(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			fetches.Add(1)
+			if !ok.Load() {
+				http.Error(w, "busy", http.StatusServiceUnavailable)
+				return
+			}
+			root := "http://" + r.Host
+			writeJSON(w, map[string]any{"policy_decision_point": root, "search_resource_endpoint": root + "/v2/find"})
+			return
+		}
+		writeJSON(w, map[string]any{"results": []any{}})
+	})
+	return srv, got, &fetches
+}
+
+// A transient failure says nothing about the PDP's layout. It must not replace
+// a good document with "no metadata" for the whole TTL.
+func TestSearch_TransientMetadataFailureKeepsTheCachedDocument(t *testing.T) {
+	var ok atomic.Bool
+	ok.Store(true)
+	pdp, got, _ := flakyMetadataPDP(t, &ok)
+	_, client := clientFor(pdp.URL, pathEvaluation)
+	clock := time.Unix(0, 0)
+	client.now = func() time.Time { return clock }
+
+	requireNoToolError(t, callSearch(t, client, searchArgs(searchResource, nil)))
+	ok.Store(false)
+	clock = clock.Add(metadataCacheTTL)
+
+	out := structured[searchOutput](t, callSearch(t, client, searchArgs(searchResource, nil)))
+	if got.Path != "/v2/find" || out.EndpointSource != endpointFromMetadata {
+		t.Fatalf("after a 503 on refresh, POST went to %s (source %q)", got.Path, out.EndpointSource)
+	}
+}
+
+func TestSearch_TransientMetadataFailureIsNotCached(t *testing.T) {
+	var ok atomic.Bool
+	pdp, got, fetches := flakyMetadataPDP(t, &ok)
+	_, client := clientFor(pdp.URL, pathEvaluation)
+
+	out := structured[searchOutput](t, callSearch(t, client, searchArgs(searchResource, nil)))
+	if out.EndpointSource != endpointFromDefault {
+		t.Fatalf("source %q with no metadata available", out.EndpointSource)
+	}
+	// The PDP recovers: the next search must look again, not sit on a cached
+	// failure for the TTL.
+	ok.Store(true)
+	out = structured[searchOutput](t, callSearch(t, client, searchArgs(searchResource, nil)))
+	if got.Path != "/v2/find" || out.EndpointSource != endpointFromMetadata || fetches.Load() != 2 {
+		t.Fatalf("POST to %s (source %q) after %d fetches", got.Path, out.EndpointSource, fetches.Load())
+	}
+}
+
+// A PDP that says it has no metadata is a definite answer, cached like a
+// document, and looked at again once the TTL is up.
+func TestSearch_NoMetadataIsCachedUntilTheTTL(t *testing.T) {
+	var fetches atomic.Int32
+	pdp, _ := fakePDP(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			fetches.Add(1)
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, map[string]any{"results": []any{}})
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+	clock := time.Unix(0, 0)
+	client.now = func() time.Time { return clock }
+
+	requireNoToolError(t, callSearch(t, client, searchArgs(searchResource, nil)))
+	requireNoToolError(t, callSearch(t, client, searchArgs(searchResource, nil)))
+	if n := fetches.Load(); n != 1 {
+		t.Fatalf("%d metadata fetches inside the TTL, want 1", n)
+	}
+	clock = clock.Add(metadataCacheTTL)
+	requireNoToolError(t, callSearch(t, client, searchArgs(searchResource, nil)))
+	if n := fetches.Load(); n != 2 {
+		t.Fatalf("%d metadata fetches after the TTL, want 2", n)
+	}
+}
+
+// Run under -race: searches share one client and its metadata cache.
+func TestSearch_ConcurrentSearchesShareTheCache(t *testing.T) {
+	// Not fakePDP: its request capture is not meant for concurrent requests.
+	pdp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		root := "http://" + r.Host
+		if r.Method == http.MethodGet {
+			writeJSON(w, map[string]any{"policy_decision_point": root, "search_resource_endpoint": root + "/x"})
+			return
+		}
+		writeJSON(w, map[string]any{"results": []any{}})
+	}))
+	t.Cleanup(pdp.Close)
+	_, client := clientFor(pdp.URL, pathEvaluation)
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			res, err := authzenSearch(context.Background(), newRequest("authzen_search", searchArgs(searchResource, nil)), client)
+			if err != nil || res.IsError {
+				t.Errorf("search failed: %v %v", err, res)
+			}
+		})
+	}
+	wg.Wait()
 }
