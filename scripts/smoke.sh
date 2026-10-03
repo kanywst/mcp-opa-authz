@@ -233,8 +233,10 @@ echo "✓ smoke: authzen_discover resolved $ENDPOINT"
 SEARCH=$(result_of 7)
 FOUND=$(jq -r '[.results[] | select(.type == "doc") | .id] | join(",")' <<<"$SEARCH" 2>/dev/null) || fail "authzen_search returned no decodable result"
 MORE=$(jq -r '.has_more' <<<"$SEARCH")
+SOURCE=$(jq -r '.endpoint_source' <<<"$SEARCH")
 [[ "$FOUND" == "d1,d2" ]] || fail "authzen_search returned [$FOUND], expected d1,d2" 1
 [[ "$MORE" == "false" ]] || fail "authzen_search reported has_more=$MORE on the last page" 1
-echo "✓ smoke: authzen_search listed 2 permitted resources"
+[[ "$SOURCE" == "metadata" ]] || fail "authzen_search took its endpoint from '$SOURCE', not from the advertised metadata" 1
+echo "✓ smoke: authzen_search listed 2 permitted resources from the advertised endpoint"
 
 echo "✓ smoke: all checks passed"

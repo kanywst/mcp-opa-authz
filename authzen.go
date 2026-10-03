@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"time"
 )
 
 // Wire types for the OpenID AuthZEN Authorization API 1.0 (Final,
@@ -145,6 +147,22 @@ func pdpErrorf(format string, a ...any) error { return &errPDP{msg: fmt.Sprintf(
 type pdpClient struct {
 	http *http.Client
 	cfg  *config
+
+	// metadata caches each PDP root's metadata document for the search tool,
+	// so that resolving an endpoint does not add a round trip to every call.
+	mu       sync.Mutex
+	metadata map[string]metadataEntry
+	now      func() time.Time
+}
+
+// metadataCacheTTL bounds how long a PDP's advertised endpoints are trusted
+// before they are fetched again. Endpoints move rarely; a PDP restarted with a
+// new layout is picked up within this window.
+const metadataCacheTTL = 5 * time.Minute
+
+type metadataEntry struct {
+	meta    *pdpMetadata // nil: the PDP has no usable metadata document
+	fetched time.Time
 }
 
 func newPDPClient(cfg *config) *pdpClient {
@@ -160,7 +178,9 @@ func newPDPClient(cfg *config) *pdpClient {
 				return fmt.Errorf("PDP redirected to %s; AuthZEN endpoints are expected to answer directly", req.URL.Redacted())
 			},
 		},
-		cfg: cfg,
+		cfg:      cfg,
+		metadata: map[string]metadataEntry{},
+		now:      time.Now,
 	}
 }
 
@@ -418,4 +438,29 @@ func (c *pdpClient) fetchMetadata(ctx context.Context, root string) (pdpMetadata
 			metadataURL, meta.PolicyDecisionPoint, root)
 	}
 	return meta, metadataURL, nil
+}
+
+// usableMetadata returns root's metadata document if it can be fetched and
+// passes fetchMetadata's checks, or nil. Either answer is cached for
+// metadataCacheTTL. Failure is not an error here: the specification makes the
+// metadata document optional and falls back to the default paths without it.
+func (c *pdpClient) usableMetadata(ctx context.Context, root string) *pdpMetadata {
+	c.mu.Lock()
+	e, ok := c.metadata[root]
+	c.mu.Unlock()
+	if ok && c.now().Sub(e.fetched) < metadataCacheTTL {
+		return e.meta
+	}
+
+	var found *pdpMetadata
+	if meta, _, err := c.fetchMetadata(ctx, root); err == nil {
+		found = &meta
+	}
+	// A call cancelled by its client says nothing about the PDP.
+	if ctx.Err() == nil {
+		c.mu.Lock()
+		c.metadata[root] = metadataEntry{meta: found, fetched: c.now()}
+		c.mu.Unlock()
+	}
+	return found
 }

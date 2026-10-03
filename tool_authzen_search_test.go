@@ -3,8 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -308,4 +312,137 @@ func TestSearch_OutputSchemaAcceptsRealResults(t *testing.T) {
 	res := callSearch(t, client, searchArgs(searchResource, nil))
 	requireNoToolError(t, res)
 	validateAgainstOutputSchema(t, newServer(cfg).ListTools()["authzen_search"].Tool, res.StructuredContent)
+}
+
+// searchPDPWithMetadata serves a metadata document (built by meta from the
+// root the PDP is reached at) and answers every POST with an empty search
+// result. It reports how many metadata fetches it served.
+func searchPDPWithMetadata(t *testing.T, meta func(root string) map[string]any) (*httptest.Server, *capturedRequest, *atomic.Int32) {
+	t.Helper()
+	var fetches atomic.Int32
+	srv, got := fakePDP(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			fetches.Add(1)
+			if r.URL.Path != pathMetadata {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, meta("http://"+r.Host))
+			return
+		}
+		writeJSON(w, map[string]any{"results": []any{}})
+	})
+	return srv, got, &fetches
+}
+
+func TestSearch_UsesTheEndpointTheMetadataAdvertises(t *testing.T) {
+	pdp, got, _ := searchPDPWithMetadata(t, func(root string) map[string]any {
+		return map[string]any{
+			"policy_decision_point":      root,
+			"access_evaluation_endpoint": root + pathEvaluation,
+			"search_resource_endpoint":   root + "/v2/find-resources",
+		}
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+
+	out := structured[searchOutput](t, callSearch(t, client, searchArgs(searchResource, nil)))
+	if got.Path != "/v2/find-resources" {
+		t.Fatalf("POST went to %s; AuthZEN 1.0 says the advertised endpoint MUST be used", got.Path)
+	}
+	if out.EndpointSource != endpointFromMetadata || out.PDPURL != pdp.URL+"/v2/find-resources" {
+		t.Fatalf("out = %+v", out)
+	}
+}
+
+func TestSearch_FallsBackToTheDefaultPath(t *testing.T) {
+	cases := map[string]func(root string) map[string]any{
+		// The PDP has metadata, but advertises no endpoint for this search.
+		"not advertised": func(root string) map[string]any {
+			return map[string]any{
+				"policy_decision_point":      root,
+				"access_evaluation_endpoint": root + pathEvaluation,
+				"search_subject_endpoint":    root + "/elsewhere",
+			}
+		},
+		// A document for a different PDP MUST NOT be used.
+		"metadata for another PDP": func(string) map[string]any {
+			return map[string]any{
+				"policy_decision_point":    "https://other.example.com",
+				"search_resource_endpoint": "https://other.example.com/x",
+			}
+		},
+	}
+	for name, meta := range cases {
+		t.Run(name, func(t *testing.T) {
+			pdp, got, _ := searchPDPWithMetadata(t, meta)
+			_, client := clientFor(pdp.URL, pathEvaluation)
+			out := structured[searchOutput](t, callSearch(t, client, searchArgs(searchResource, nil)))
+			if got.Path != pathSearchResource || out.EndpointSource != endpointFromDefault {
+				t.Fatalf("POST went to %s (source %q)", got.Path, out.EndpointSource)
+			}
+		})
+	}
+
+	t.Run("no metadata document", func(t *testing.T) {
+		pdp, got := fakePDP(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, map[string]any{"results": []any{}})
+		})
+		_, client := clientFor(pdp.URL, pathEvaluation)
+		out := structured[searchOutput](t, callSearch(t, client, searchArgs(searchResource, nil)))
+		if got.Path != pathSearchResource || out.EndpointSource != endpointFromDefault {
+			t.Fatalf("POST went to %s (source %q)", got.Path, out.EndpointSource)
+		}
+	})
+}
+
+func TestSearch_ExplicitPDPURLSkipsMetadata(t *testing.T) {
+	pdp, _, fetches := searchPDPWithMetadata(t, func(root string) map[string]any {
+		return map[string]any{"policy_decision_point": root, "search_resource_endpoint": root + "/x"}
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+	out := structured[searchOutput](t, callSearch(t, client, searchArgs(searchResource, map[string]any{
+		"pdp_url": pdp.URL + pathSearchResource,
+	})))
+	if out.EndpointSource != endpointFromArgument || fetches.Load() != 0 {
+		t.Fatalf("source %q, %d metadata fetches", out.EndpointSource, fetches.Load())
+	}
+}
+
+func TestSearch_CachesMetadataPerRoot(t *testing.T) {
+	pdp, _, fetches := searchPDPWithMetadata(t, func(root string) map[string]any {
+		return map[string]any{"policy_decision_point": root, "search_resource_endpoint": root + "/x"}
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+	clock := time.Unix(0, 0)
+	client.now = func() time.Time { return clock }
+
+	for range 3 {
+		requireNoToolError(t, callSearch(t, client, searchArgs(searchResource, nil)))
+	}
+	if n := fetches.Load(); n != 1 {
+		t.Fatalf("%d metadata fetches for 3 searches, want 1", n)
+	}
+
+	clock = clock.Add(metadataCacheTTL)
+	requireNoToolError(t, callSearch(t, client, searchArgs(searchResource, nil)))
+	if n := fetches.Load(); n != 2 {
+		t.Fatalf("%d metadata fetches after the TTL, want 2", n)
+	}
+}
+
+// The advertised endpoint is whatever the PDP's host served, so it gets the
+// same URL checks as a model-supplied one.
+func TestSearch_ValidatesTheAdvertisedEndpoint(t *testing.T) {
+	pdp, _, _ := searchPDPWithMetadata(t, func(root string) map[string]any {
+		return map[string]any{
+			"policy_decision_point":    root,
+			"search_resource_endpoint": "https://user:pw@evil.example.com/search",
+		}
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+	requireToolError(t, callSearch(t, client, searchArgs(searchResource, nil)), "userinfo")
 }
