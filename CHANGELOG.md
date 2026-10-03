@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.5.0] - 2026-10-03
+
+AuthZEN 1.0 metadata conformance. `authzen_search` now goes where the PDP says
+its search endpoints are, and metadata is found and trusted the way the
+specification says.
+
 ### Changed
 
 - **`authzen_search` uses the endpoint the PDP advertises.** AuthZEN 1.0 §Transport says the request URL MUST be the endpoint from the PDP's metadata when one is advertised; v0.4.0 always used the default path. Without `pdp_url`, the tool now reads `/.well-known/authzen-configuration` from the configured PDP's root and uses `search_{subject,resource,action}_endpoint`, falling back to the default path when the PDP has no usable metadata or advertises none for that search. The document is cached per PDP root for five minutes, so searches do not pay a metadata round trip each; on a cold cache a search makes two round trips, each bounded by `AUTHZEN_PDP_TIMEOUT`. Only a definite answer is cached: a timeout or 5xx while refreshing keeps the previous document in use rather than falling back to the default path for five minutes. An advertised endpoint must be on the PDP's own origin (same scheme and host), since the PDP token is sent to it; pass a cross-origin endpoint as `pdp_url` to use it deliberately. The result's new `endpoint_source` (`pdp_url`, `metadata` or `default`) says which was used.
@@ -14,6 +20,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **The metadata URL for a PDP under a path prefix was in the wrong place.** AuthZEN 1.0 inserts `/.well-known/authzen-configuration` between the host and the path (RFC 8615), so a PDP at `https://gw.example.com/pdp` publishes `https://gw.example.com/.well-known/authzen-configuration/pdp`. Earlier releases appended it after the prefix. The specification's location is now tried first and the appended one second, only on a 404, so a deployment set up for the old form keeps working. A root without a path is unaffected.
 - **`authzen_discover` used metadata that named a different PDP.** AuthZEN 1.0 requires the document's `policy_decision_point` to be identical to the PDP identifier the well-known URL was built from, and says a document that fails that MUST NOT be used. It is now checked, tolerating only a trailing slash, and a mismatch is a tool error instead of a set of endpoints for some other PDP.
+
+### Compatibility
+
+- No configuration change is needed. A PDP that advertises no search endpoints, or serves no metadata, is searched at the same default paths as in v0.4.0.
+- A PDP under a path prefix that served its metadata only at the appended location (`…/pdp/.well-known/authzen-configuration`) is still found, one 404 later.
+- `authzen_discover` now refuses a metadata document whose `policy_decision_point` is not the PDP it was fetched from, where v0.4.0 returned it.
 
 ## [v0.4.0] - 2026-10-03
 
@@ -142,7 +154,8 @@ The first release since the `mcp-opa` / `mcp-authzen` merge. It brings the AuthZ
 
 First release after merging `0-draft/mcp-opa` and `0-draft/mcp-authzen` into one binary. Two tools, `evaluate_policy` and `authzen_evaluate`, over MCP stdio.
 
-[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.5.0...HEAD
+[v0.5.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.4.0...v0.5.0
 [v0.4.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.3.1...v0.4.0
 [v0.3.1]: https://github.com/kanywst/mcp-opa-authz/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.2.1...v0.3.0
