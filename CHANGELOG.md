@@ -6,9 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-10-04
+
+The batch tool follows the PDP's advertised endpoint, as search does since
+v0.5.0.
+
 ### Changed
 
 - **`authzen_evaluate_batch` uses the endpoint the PDP advertises.** AuthZEN 1.0 §Transport says the request URL MUST be the endpoint from the PDP's metadata when one is advertised; the batch tool always derived `/access/v1/evaluations` from `AUTHZEN_PDP_URL`. Without `pdp_url`, it now resolves `access_evaluations_endpoint` exactly as `authzen_search` resolves its endpoints since v0.5.0: from the configured PDP's metadata, cached five minutes, held to the PDP's own origin, falling back to the default path. The result gains `endpoint_source`.
+
+### Compatibility
+
+- No configuration change is needed. A PDP that advertises no `access_evaluations_endpoint`, or serves no metadata, is called at the same `/access/v1/evaluations` as before.
+- A PDP whose metadata advertises an `access_evaluations_endpoint` on another origin now makes the batch tool fail with an error naming it, instead of being silently bypassed; pass the endpoint as `pdp_url` to use it.
 
 ## [v0.5.0] - 2026-10-03
 
@@ -158,7 +168,8 @@ The first release since the `mcp-opa` / `mcp-authzen` merge. It brings the AuthZ
 
 First release after merging `0-draft/mcp-opa` and `0-draft/mcp-authzen` into one binary. Two tools, `evaluate_policy` and `authzen_evaluate`, over MCP stdio.
 
-[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.6.0...HEAD
+[v0.6.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.4.0...v0.5.0
 [v0.4.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.3.1...v0.4.0
 [v0.3.1]: https://github.com/kanywst/mcp-opa-authz/compare/v0.3.0...v0.3.1
