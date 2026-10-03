@@ -596,3 +596,16 @@ func TestSearch_ConcurrentSearchesShareTheCache(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// PDP-controlled metadata strings reach the model only through snippet().
+func TestSearch_BoundsAdvertisedValuesInErrors(t *testing.T) {
+	huge := "https://evil.example.com/" + strings.Repeat("a", 64<<10)
+	pdp, _, _ := searchPDPWithMetadata(t, func(root string) map[string]any {
+		return map[string]any{"policy_decision_point": root, "search_resource_endpoint": huge}
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+	msg := requireToolError(t, callSearch(t, client, searchArgs(searchResource, nil)), "PDP metadata advertises")
+	if len(msg) > 4096 {
+		t.Fatalf("error is %d bytes; the advertised value was not bounded", len(msg))
+	}
+}

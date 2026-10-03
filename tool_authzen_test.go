@@ -563,3 +563,12 @@ func TestDiscover_ToleratesTrailingSlashOnPDPIdentifier(t *testing.T) {
 	_, client := clientFor(pdp.URL, pathEvaluation)
 	requireNoToolError(t, callDiscover(t, client, nil))
 }
+
+func TestDiscover_BoundsTheMismatchedIdentifierInErrors(t *testing.T) {
+	pdp, _ := jsonPDP(t, map[string]any{"policy_decision_point": strings.Repeat("x", 64<<10)})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+	msg := requireToolError(t, callDiscover(t, client, nil), "MUST NOT be used")
+	if len(msg) > 4096 {
+		t.Fatalf("error is %d bytes; policy_decision_point was not bounded", len(msg))
+	}
+}
