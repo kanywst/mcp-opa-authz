@@ -145,7 +145,7 @@ The AuthZEN Search APIs. `search` picks which entity is being listed; that entit
 
 ### `authzen_discover`
 
-Fetches `/.well-known/authzen-configuration` from a PDP root. `pdp_url` may be a root or an evaluation endpoint — the known AuthZEN path suffix is stripped, and a PDP mounted under a prefix keeps its prefix.
+Fetches `/.well-known/authzen-configuration` from a PDP root. `pdp_url` may be a root or an evaluation endpoint — the known AuthZEN path suffix is stripped, and a PDP mounted under a prefix keeps its prefix. A document whose `policy_decision_point` is not the root it was fetched from is rejected, as the specification requires.
 
 ## Standards conformance
 

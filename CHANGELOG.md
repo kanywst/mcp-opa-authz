@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **`authzen_discover` used metadata that named a different PDP.** AuthZEN 1.0 requires the document's `policy_decision_point` to be identical to the PDP identifier the well-known URL was built from, and says a document that fails that MUST NOT be used. It is now checked, tolerating only a trailing slash, and a mismatch is a tool error instead of a set of endpoints for some other PDP.
+
 ## [v0.4.0] - 2026-10-03
 
 A fifth tool, `authzen_search`, completes the AuthZEN 1.0 Final surface, and a

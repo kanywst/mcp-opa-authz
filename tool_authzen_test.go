@@ -444,9 +444,7 @@ func TestBatch_DefaultsAreOptional(t *testing.T) {
 // --- authzen_discover -------------------------------------------------------
 
 func TestDiscover_ReadsMetadata(t *testing.T) {
-	pdp, got := jsonPDP(t, map[string]any{
-		"policy_decision_point":       "https://pdp.example.com",
-		"access_evaluation_endpoint":  "https://pdp.example.com/access/v1/evaluation",
+	pdp, got := metadataPDP(t, "", map[string]any{
 		"access_evaluations_endpoint": "https://pdp.example.com/access/v1/evaluations",
 	})
 	cfg := testConfig()
@@ -468,10 +466,7 @@ func TestDiscover_ReadsMetadata(t *testing.T) {
 // A server configured only with an evaluation endpoint must still be able to
 // discover, or the tool is useless in the configuration everyone actually uses.
 func TestDiscover_StripsKnownEndpointPaths(t *testing.T) {
-	pdp, got := jsonPDP(t, map[string]any{
-		"policy_decision_point":      "https://pdp.example.com",
-		"access_evaluation_endpoint": "https://pdp.example.com/access/v1/evaluation",
-	})
+	pdp, got := metadataPDP(t, "", nil)
 
 	for _, configured := range []string{pathEvaluation, pathEvaluations, ""} {
 		t.Run("configured"+configured, func(t *testing.T) {
@@ -485,7 +480,7 @@ func TestDiscover_StripsKnownEndpointPaths(t *testing.T) {
 }
 
 func TestDiscover_RejectsDocumentWithoutEvaluationEndpoint(t *testing.T) {
-	pdp, _ := jsonPDP(t, map[string]any{"policy_decision_point": "https://pdp.example.com"})
+	pdp, _ := metadataPDP(t, "", map[string]any{"access_evaluation_endpoint": ""})
 	_, client := clientFor(pdp.URL, pathEvaluation)
 
 	requireToolError(t, callDiscover(t, client, nil), "access_evaluation_endpoint")
@@ -497,18 +492,33 @@ func TestDiscover_NoURL(t *testing.T) {
 }
 
 func TestDiscover_PreservesMountPrefix(t *testing.T) {
-	var path string
-	pdp, _ := fakePDP(t, func(w http.ResponseWriter, r *http.Request) {
-		path = r.URL.Path
-		writeJSON(w, map[string]any{
-			"policy_decision_point":      "x",
-			"access_evaluation_endpoint": "y",
-		})
-	})
+	pdp, got := metadataPDP(t, "/pdp", nil)
 	_, client := clientFor(pdp.URL, "/pdp"+pathEvaluation)
 
 	requireNoToolError(t, callDiscover(t, client, nil))
-	if path != "/pdp"+pathMetadata {
-		t.Fatalf("fetched %q; a PDP mounted under a prefix keeps it", path)
+	if got.Path != "/pdp"+pathMetadata {
+		t.Fatalf("fetched %q; a PDP mounted under a prefix keeps it", got.Path)
 	}
+}
+
+// AuthZEN 1.0 §PDP Metadata: a document whose policy_decision_point is not the
+// PDP it was fetched from MUST NOT be used.
+func TestDiscover_RejectsMetadataForAnotherPDP(t *testing.T) {
+	pdp, _ := jsonPDP(t, map[string]any{
+		"policy_decision_point":      "https://other.example.com",
+		"access_evaluation_endpoint": "https://other.example.com/access/v1/evaluation",
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+	requireToolError(t, callDiscover(t, client, nil), "MUST NOT be used")
+}
+
+func TestDiscover_ToleratesTrailingSlashOnPDPIdentifier(t *testing.T) {
+	pdp, _ := fakePDP(t, func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"policy_decision_point":      "http://" + r.Host + "/",
+			"access_evaluation_endpoint": "http://" + r.Host + pathEvaluation,
+		})
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+	requireNoToolError(t, callDiscover(t, client, nil))
 }

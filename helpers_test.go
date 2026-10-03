@@ -210,3 +210,21 @@ func evaluateArgs(overrides map[string]any) map[string]any {
 	}
 	return args
 }
+
+// metadataPDP serves a PDP Metadata document whose policy_decision_point is the
+// PDP root it is actually reached at (the server origin plus prefix), merged
+// with extra members.
+func metadataPDP(t *testing.T, prefix string, extra map[string]any) (*httptest.Server, *capturedRequest) {
+	t.Helper()
+	return fakePDP(t, func(w http.ResponseWriter, r *http.Request) {
+		root := "http://" + r.Host + prefix
+		doc := map[string]any{
+			"policy_decision_point":      root,
+			"access_evaluation_endpoint": root + pathEvaluation,
+		}
+		for k, v := range extra {
+			doc[k] = v
+		}
+		writeJSON(w, doc)
+	})
+}

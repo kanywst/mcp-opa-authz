@@ -354,13 +354,8 @@ func authzenDiscover(ctx context.Context, req mcp.CallToolRequest, client *pdpCl
 	if err != nil {
 		return toolErrorf("%v", err), nil
 	}
-	metadataURL, err := resolveFromRoot(root, pathMetadata)
+	meta, metadataURL, err := client.fetchMetadata(ctx, root)
 	if err != nil {
-		return toolErrorf("%v", err), nil
-	}
-
-	var meta pdpMetadata
-	if err := client.getJSON(ctx, metadataURL, &meta); err != nil {
 		return toolErrorf("%v", err), nil
 	}
 	if meta.AccessEvaluationEndpoint == "" {
