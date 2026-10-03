@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **`authzen_search` uses the endpoint the PDP advertises.** AuthZEN 1.0 §Transport says the request URL MUST be the endpoint from the PDP's metadata when one is advertised; v0.4.0 always used the default path. Without `pdp_url`, the tool now reads `/.well-known/authzen-configuration` from the configured PDP's root and uses `search_{subject,resource,action}_endpoint`, falling back to the default path when the PDP has no usable metadata or advertises none for that search. The document is cached per PDP root for five minutes, so searches do not pay a metadata round trip each. The result's new `endpoint_source` (`pdp_url`, `metadata` or `default`) says which was used.
+
 ### Fixed
 
 - **`authzen_discover` used metadata that named a different PDP.** AuthZEN 1.0 requires the document's `policy_decision_point` to be identical to the PDP identifier the well-known URL was built from, and says a document that fails that MUST NOT be used. It is now checked, tolerating only a trailing slash, and a mismatch is a tool error instead of a set of endpoints for some other PDP.

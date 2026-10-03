@@ -45,7 +45,18 @@ type searchOutput struct {
 	// evaluation tools.
 	PDPURL    string `json:"pdp_url"`
 	RequestID string `json:"request_id"`
+	// EndpointSource says where PDPURL came from: "pdp_url" (the argument),
+	// "metadata" (the PDP's advertised search endpoint) or "default" (the
+	// specification's default path under the configured PDP's root).
+	EndpointSource string `json:"endpoint_source"`
 }
+
+// Values for searchOutput.EndpointSource.
+const (
+	endpointFromArgument = "pdp_url"
+	endpointFromMetadata = "metadata"
+	endpointFromDefault  = "default"
+)
 
 func registerSearchTool(s *server.MCPServer, client *pdpClient) {
 	s.AddTool(
@@ -99,8 +110,9 @@ func registerSearchTool(s *server.MCPServer, client *pdpClient) {
 			),
 			mcp.WithString("pdp_url",
 				mcp.Description("Override the endpoint for this call. Must point at the Search "+
-					"endpoint for the chosen kind. Defaults to the specification's path "+
-					"under the root of the configured "+envPDPURL+"."),
+					"endpoint for the chosen kind. Defaults to the endpoint the configured "+
+					"PDP advertises in its metadata, or the specification's default path "+
+					"under the root of "+envPDPURL+" when it advertises none."),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -117,13 +129,15 @@ func authzenSearch(ctx context.Context, req mcp.CallToolRequest, client *pdpClie
 			searchSubject, searchResource, searchAction, kind), nil
 	}
 
-	endpoint := req.GetString("pdp_url", "")
+	endpoint, source := req.GetString("pdp_url", ""), endpointFromArgument
 	if endpoint == "" {
 		var err error
-		if endpoint, err = siblingEndpoint(client.cfg.PDPURL, path); err != nil {
+		if endpoint, source, err = resolveSearchEndpoint(ctx, client, kind, path); err != nil {
 			return toolErrorf("%v", err), nil
 		}
 	}
+	// An advertised endpoint is validated like a model-supplied one: the
+	// metadata document is whatever the PDP's host served.
 	if err := validatePDPURL(endpoint); err != nil {
 		return toolErrorf("%v", err), nil
 	}
@@ -152,11 +166,12 @@ func authzenSearch(ctx context.Context, req mcp.CallToolRequest, client *pdpClie
 	}
 
 	out := searchOutput{
-		Search:    kind,
-		Results:   decoded.Results,
-		Context:   decoded.Context,
-		PDPURL:    endpoint,
-		RequestID: requestID,
+		Search:         kind,
+		Results:        decoded.Results,
+		Context:        decoded.Context,
+		PDPURL:         endpoint,
+		RequestID:      requestID,
+		EndpointSource: source,
 	}
 	if p := decoded.Page; p != nil {
 		// The specification's own example response carries a page with only
@@ -252,6 +267,32 @@ func readSearchArgs(req mcp.CallToolRequest, cfg *config, kind string) (searchRe
 		out.Page = &searchPageRequest{Token: token, Limit: limit}
 	}
 	return out, nil
+}
+
+// resolveSearchEndpoint finds the endpoint for one kind of search on the
+// configured PDP. AuthZEN 1.0 §Transport: the request URL MUST be the endpoint
+// the PDP's metadata advertises for that API when there is one, and SHOULD be
+// the default path under the PDP's root otherwise.
+func resolveSearchEndpoint(ctx context.Context, client *pdpClient, kind, path string) (endpoint, source string, err error) {
+	if client.cfg.PDPURL == "" {
+		return "", "", pdpErrorf("no PDP endpoint: set %s in the MCP server environment, or pass pdp_url", envPDPURL)
+	}
+	root, err := rootOf(client.cfg.PDPURL)
+	if err != nil {
+		return "", "", err
+	}
+	if meta := client.usableMetadata(ctx, root); meta != nil {
+		advertised := map[string]string{
+			searchSubject:  meta.SearchSubjectEndpoint,
+			searchResource: meta.SearchResourceEndpoint,
+			searchAction:   meta.SearchActionEndpoint,
+		}[kind]
+		if advertised != "" {
+			return advertised, endpointFromMetadata, nil
+		}
+	}
+	endpoint, err = resolveFromRoot(root, path)
+	return endpoint, endpointFromDefault, err
 }
 
 // checkSearchEndpoint rejects a pdp_url that names the default path of a

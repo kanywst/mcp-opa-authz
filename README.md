@@ -132,7 +132,7 @@ The AuthZEN Search APIs. `search` picks which entity is being listed; that entit
 | `resource` | Which resources of a type may the subject act on? | `type` and `id` | required | `type` only |
 | `action` | What may the subject do to the resource? | `type` and `id` | must be omitted | `type` and `id` |
 
-`context`, `pdp_url`, `page_limit` and `page_token` are optional. The endpoint defaults to the specification's path (`/access/v1/search/{subject,resource,action}`) under the root of `AUTHZEN_PDP_URL`. Returns `results`, `has_more` and `next_page_token`; pass the token back as `page_token`, with every other argument unchanged, for the next page. A response whose `page` object has no `next_token` is an error even though the specification's own example has one: without it nothing says whether the list is complete.
+`context`, `pdp_url`, `page_limit` and `page_token` are optional. Without `pdp_url`, the endpoint is the one the PDP advertises in its metadata (`search_subject_endpoint` etc.), as the specification requires, falling back to the default path (`/access/v1/search/{subject,resource,action}`) under the root of `AUTHZEN_PDP_URL` when it has no usable metadata. The metadata is cached per PDP for five minutes, and `endpoint_source` in the result says which one was used. Returns `results`, `has_more` and `next_page_token`; pass the token back as `page_token`, with every other argument unchanged, for the next page. A response whose `page` object has no `next_token` is an error even though the specification's own example has one: without it nothing says whether the list is complete.
 
 ```json
 {
