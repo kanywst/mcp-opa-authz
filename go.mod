@@ -3,9 +3,9 @@ module github.com/kanywst/mcp-opa-authz
 go 1.26.6
 
 require (
-	github.com/google/jsonschema-go v0.4.2
+	github.com/google/jsonschema-go v0.4.3
 	github.com/mark3labs/mcp-go v1.1.1
-	github.com/open-policy-agent/opa v1.21.0
+	github.com/open-policy-agent/opa v1.21.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 )
 
