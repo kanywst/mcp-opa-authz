@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Security
+
+- **`golang.org/x/crypto` v0.55.0 → v0.57.0**, fixing GO-2026-6354 and GO-2026-6355. Source-level govulncheck finds no call path from this server to either, but both are linked into the release binary. GO-2026-5932 also affects `x/crypto` and has no fixed version yet; it is likewise not called.
+- **Release binaries are built with go1.26.8.** `go.mod` had no `toolchain` line, so CI and the release built with the `go` directive's go1.26.6 and missed the standard library fixes in go1.26.7 and go1.26.8. The `go` directive, the minimum for `go install`, is unchanged.
+
 ## [v0.6.0] - 2026-10-04
 
 The batch tool follows the PDP's advertised endpoint, as search does since
