@@ -6,10 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.6.1] - 2026-10-07
+
+Security and dependencies only. The tools, their arguments, their output schemas and the sandbox are what v0.6.0 shipped.
+
 ### Security
 
 - **`golang.org/x/crypto` v0.55.0 → v0.57.0**, fixing GO-2026-6354 and GO-2026-6355. Source-level govulncheck finds no call path from this server to either, but both are linked into the release binary. GO-2026-5932 also affects `x/crypto` and has no fixed version yet; it is likewise not called.
 - **Release binaries are built with go1.26.8.** `go.mod` had no `toolchain` line, so CI and the release built with the `go` directive's go1.26.6 and missed the standard library fixes in go1.26.7 and go1.26.8. The `go` directive, the minimum for `go install`, is unchanged.
+
+### Changed
+
+- `github.com/open-policy-agent/opa` v1.21.0 → v1.21.1.
+- `github.com/google/jsonschema-go` v0.4.2 → v0.4.3.
+
+### Compatibility
+
+- No configuration change is needed to upgrade from v0.6.0.
 
 ## [v0.6.0] - 2026-10-04
 
@@ -173,7 +186,8 @@ The first release since the `mcp-opa` / `mcp-authzen` merge. It brings the AuthZ
 
 First release after merging `0-draft/mcp-opa` and `0-draft/mcp-authzen` into one binary. Two tools, `evaluate_policy` and `authzen_evaluate`, over MCP stdio.
 
-[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.6.1...HEAD
+[v0.6.1]: https://github.com/kanywst/mcp-opa-authz/compare/v0.6.0...v0.6.1
 [v0.6.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.4.0...v0.5.0
 [v0.4.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.3.1...v0.4.0
