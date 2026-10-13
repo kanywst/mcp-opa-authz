@@ -6,7 +6,7 @@ toolchain go1.26.9
 
 require (
 	github.com/google/jsonschema-go v0.4.3
-	github.com/mark3labs/mcp-go v1.1.1
+	github.com/mark3labs/mcp-go v1.2.1
 	github.com/open-policy-agent/opa v1.21.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 )
