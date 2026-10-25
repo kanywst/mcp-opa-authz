@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
-- **Release binaries are built with go1.26.9**, picking up the `crypto/tls`, `net/http` and `net/textproto` fixes for GO-2026-6603, GO-2026-6605, GO-2026-6607, GO-2026-6608, GO-2026-6610, GO-2026-6611, GO-2026-6612, GO-2026-6613 and GO-2026-6617, which govulncheck reports as reachable from this server.
+- **Release binaries are built with go1.26.10**, picking up the `crypto/tls`, `net/http` and `net/textproto` fixes for GO-2026-6603, GO-2026-6605, GO-2026-6607, GO-2026-6608, GO-2026-6610, GO-2026-6611, GO-2026-6612, GO-2026-6613 and GO-2026-6617 (go1.26.9) and the `crypto/x509` fix for GO-2026-6809 (go1.26.10), all of which govulncheck reports as reachable from this server.
 
 ## [v0.6.1] - 2026-10-07
 
