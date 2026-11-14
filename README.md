@@ -59,17 +59,29 @@ Debugging a policy that is denying when it should not:
   {
     "defined": true,
     "value": false,
-    "printed": ["checking roles for", "bob"],
+    "printed": ["checking roles for bob"],
     "trace": [
-      "Enter data.rbac.allow",
-      "| Eval some role in roles[input.user]",
-      "| Fail roles[\"bob\"]",
+      "policy.rego:16     | Enter data.rbac.allow",
+      …
+      "policy.rego:17     | | Eval internal.print([__local8__, __local9__])",
+      "policy.rego:18     | | Eval __local10__ = input.user",
+      "policy.rego:18     | | Unify __local10__ = input.user",
+      "policy.rego:18     | | Unify \"bob\" = __local10__",
+      "policy.rego:18     | | Eval role = data.rbac.roles[__local10__][__local0__]",
+      …
+      "policy.rego:18     | | Fail role = data.rbac.roles[__local10__][__local0__]",
+      …
+      "policy.rego:3      | Enter data.rbac.allow",
+      "policy.rego:3      | | Eval true",
+      "policy.rego:3      | | Unify true = _",
+      "policy.rego:3      | | Exit data.rbac.allow early",
       …
     ]
   }
 
-Bob has no entry in `roles` at all — the rule never reaches the permission
-check. Adding "bob": {"viewer"} fixes it.
+Line 18 fails on `roles["bob"]`: bob has no entry in `roles` at all, so the
+rule body never reaches the permission check and the `default` on line 3
+answers. Adding "bob": {"viewer"} fixes it.
 ```
 
 Then confirming against the PDP that actually runs:

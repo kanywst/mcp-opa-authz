@@ -28,8 +28,10 @@ Note the difference between `"defined": true, "value": false` and `"defined": fa
 
 MCP is JSON-RPC over stdin/stdout, so the tools are reachable without a client. The `initialize` handshake is required before any `tools/call`.
 
+Keep stdin open until the reply arrives: when stdin closes, the server cancels calls that are still running, and a bare `printf | mcp-opa-authz` gets `eval_cancel_error: context canceled` back. The `sleep` does that.
+
 ```bash
-printf '%s\n' \
+{ printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"cli","version":"0"}}}' \
   '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
   "$(jq -nc --arg r "$(cat examples/rbac.rego)" \
@@ -37,7 +39,7 @@ printf '%s\n' \
          rego:$r,
          query:"data.rbac.allow",
          input_json:"{\"user\":\"alice\",\"action\":\"read\"}"
-       }}}')" \
+       }}}')"; sleep 2; } \
   | mcp-opa-authz | jq -r 'select(.id==2) | .result.content[0].text'
 ```
 
