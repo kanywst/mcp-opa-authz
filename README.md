@@ -169,7 +169,7 @@ Implements [Authorization API 1.0](https://openid.net/specs/authorization-api-1_
 | Access Evaluations, batch (`POST /access/v1/evaluations`) | `authzen_evaluate_batch` |
 | PDP Metadata (`GET /.well-known/authzen-configuration`) | `authzen_discover` |
 | Subject / Action / Resource information model | Required members validated before the request is sent |
-| `X-Request-ID` correlation | Sent on every call, returned in the result |
+| `X-Request-ID` correlation (§Request Identification) | Sent on every call and returned in the result; a response echoing a different identifier is rejected |
 | Search APIs (subject / resource / action, with pagination) | `authzen_search` |
 
 Related work worth knowing about: the AuthZEN working group's [COAZ profile](https://github.com/openid/authzen/blob/main/profiles/authzen-coaz-mcp-binding-1_0.md) binds AuthZEN to MCP tool calls themselves, so a gateway can authorize `tools/call` with an `x-authzen-mapping` declared in a tool's `inputSchema`. That is the enforcement side of the same problem — this server is the *inspection* side, and the two compose.

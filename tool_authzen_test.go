@@ -139,6 +139,49 @@ func TestEvaluate_MissingDecisionIsAnErrorNotADeny(t *testing.T) {
 	}
 }
 
+// AuthZEN 1.0 §Request Identification: the PDP MUST return the identifier it
+// was sent. A different one means the response may answer another request,
+// so its decision is not used — and is not turned into a deny either.
+func TestEvaluate_MismatchedRequestIDIsAnError(t *testing.T) {
+	long := strings.Repeat("x", 4096)
+	for name, echo := range map[string]string{
+		"other id":  "some-other-request",
+		"empty":     "",
+		"oversized": long,
+	} {
+		t.Run(name, func(t *testing.T) {
+			pdp, _ := fakePDP(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Header()["X-Request-Id"] = []string{echo}
+				writeJSON(w, map[string]any{"decision": true})
+			})
+			_, client := clientFor(pdp.URL, pathEvaluation)
+
+			msg := requireToolError(t, callEvaluate(t, client, evaluateArgs(nil)), "X-Request-ID")
+			if strings.Contains(strings.ToLower(msg), "denied") {
+				t.Fatalf("a mismatched request id must not be reported as a deny: %s", msg)
+			}
+			if strings.Contains(msg, long) {
+				t.Fatal("the echoed request id reached the model unbounded")
+			}
+		})
+	}
+}
+
+func TestEvaluate_EchoedRequestIDIsAccepted(t *testing.T) {
+	pdp, got := fakePDP(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Request-ID", r.Header.Get("X-Request-ID"))
+		writeJSON(w, map[string]any{"decision": true})
+	})
+	_, client := clientFor(pdp.URL, pathEvaluation)
+
+	res := callEvaluate(t, client, evaluateArgs(nil))
+	requireNoToolError(t, res)
+	out := structured[evaluateOutput](t, res)
+	if out.RequestID != got.RequestID {
+		t.Fatalf("request id %q, sent %q", out.RequestID, got.RequestID)
+	}
+}
+
 func TestEvaluate_NoEndpointConfigured(t *testing.T) {
 	cfg := testConfig()
 	requireToolError(t, callEvaluate(t, newPDPClient(cfg), evaluateArgs(nil)), envPDPURL)
