@@ -229,8 +229,9 @@ func validatePDPURL(raw string) error {
 }
 
 // postJSON sends body to endpoint and decodes the JSON response into out.
-// requestID is the X-Request-ID correlating this call in the PDP's logs; the
-// value the PDP echoed back is returned.
+// requestID is the X-Request-ID correlating this call in the PDP's logs. It
+// is returned even on failure; a PDP that echoes a different one fails the
+// call (see checkRequestIDEcho).
 func (c *pdpClient) postJSON(ctx context.Context, endpoint string, body, out any) (requestID string, err error) {
 	encoded, err := json.Marshal(body)
 	if err != nil {
@@ -310,7 +311,41 @@ func (c *pdpClient) do(req *http.Request) ([]byte, error) {
 			status: res.StatusCode,
 		}
 	}
+	if err := checkRequestIDEcho(req.Header.Get("X-Request-ID"), res.Header.Values("X-Request-ID")); err != nil {
+		return nil, err
+	}
 	return raw, nil
+}
+
+// checkRequestIDEcho holds the PDP to AuthZEN 1.0 §Request Identification: a
+// PDP that is sent a request identifier MUST return the same identifier. The
+// response header is only RECOMMENDED as the way to return it, so a response
+// without one is accepted; a response that carries a different one is not,
+// because it may be the answer to some other request (a proxy or cache that
+// mixed responses up), and a decision that belongs to another request is not a
+// decision about this one.
+//
+// The error has no HTTP status, so a metadata fetch that hits it is treated as
+// transient rather than cached as the PDP's answer.
+func checkRequestIDEcho(sent string, echoed []string) error {
+	for _, v := range echoed {
+		if v != sent {
+			return pdpErrorf("PDP response carries X-Request-ID %q, but the request sent %q; AuthZEN requires the PDP to return the same identifier, so this response may belong to another request and is not used",
+				truncate(v, maxEchoedRequestID), sent)
+		}
+	}
+	return nil
+}
+
+// maxEchoedRequestID bounds a PDP-supplied request identifier quoted in an
+// error: the header is untrusted text on its way to the model.
+const maxEchoedRequestID = 128
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "… (truncated)"
 }
 
 func (c *pdpClient) setAuth(req *http.Request) {

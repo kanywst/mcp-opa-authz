@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **A PDP response that echoes a different `X-Request-ID` is rejected.** AuthZEN 1.0 §Request Identification requires the PDP to return the identifier it was sent; a response carrying another one may belong to another request, so its decision is reported as an error instead of being used. A response without the header is still accepted, since the header is only the RECOMMENDED way to return it. This applies to every PDP call, metadata included.
+
 ## [v0.6.3] - 2026-11-17
 
 Security and dependencies only. The tools, their arguments, their output schemas and the sandbox are what v0.6.2 shipped.
