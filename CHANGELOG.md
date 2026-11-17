@@ -6,9 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.7.0] - 2026-11-17
+
+One behaviour change on the AuthZEN path. The tools, their arguments, their output schemas and the sandbox are otherwise what v0.6.3 shipped.
+
 ### Changed
 
 - **A PDP response that echoes a different `X-Request-ID` is rejected.** AuthZEN 1.0 §Request Identification requires the PDP to return the identifier it was sent; a response carrying another one may belong to another request, so its decision is reported as an error instead of being used. A response without the header is still accepted, since the header is only the RECOMMENDED way to return it. This applies to every PDP call, metadata included.
+
+### Compatibility
+
+- No configuration change is needed to upgrade from v0.6.3. A PDP, or a proxy in front of it, that rewrites `X-Request-ID` on the way back now gets an error where it used to get a decision.
 
 ## [v0.6.3] - 2026-11-17
 
@@ -225,7 +233,8 @@ The first release since the `mcp-opa` / `mcp-authzen` merge. It brings the AuthZ
 
 First release after merging `0-draft/mcp-opa` and `0-draft/mcp-authzen` into one binary. Two tools, `evaluate_policy` and `authzen_evaluate`, over MCP stdio.
 
-[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.6.3...HEAD
+[Unreleased]: https://github.com/kanywst/mcp-opa-authz/compare/v0.7.0...HEAD
+[v0.7.0]: https://github.com/kanywst/mcp-opa-authz/compare/v0.6.3...v0.7.0
 [v0.6.3]: https://github.com/kanywst/mcp-opa-authz/compare/v0.6.2...v0.6.3
 [v0.6.2]: https://github.com/kanywst/mcp-opa-authz/compare/v0.6.1...v0.6.2
 [v0.6.1]: https://github.com/kanywst/mcp-opa-authz/compare/v0.6.0...v0.6.1
